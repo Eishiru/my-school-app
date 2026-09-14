@@ -7,6 +7,7 @@ import {
 import {
   useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 
 import {
@@ -53,6 +54,8 @@ type CreateQuizForm = {
   passing_score: number;
 
   status: QuizStatus;
+
+  grade_type: "WRITTEN_WORK" | "PERFORMANCE_TASK" | "FINAL_EXAM";
 
   show_correct_answers: boolean;
   shuffle_questions: boolean;
@@ -106,6 +109,16 @@ export default function CreateQuiz() {
   const createQuiz =
     useCreateTeacherQuiz();
 
+  const [searchParams] = useSearchParams();
+  const urlGradeType = searchParams.get("grade_type");
+  const initialGradeType = (
+    urlGradeType === "PERFORMANCE_TASK" ||
+    urlGradeType === "FINAL_EXAM" ||
+    urlGradeType === "WRITTEN_WORK"
+      ? urlGradeType
+      : "WRITTEN_WORK"
+  ) as "WRITTEN_WORK" | "PERFORMANCE_TASK" | "FINAL_EXAM";
+
   const [formData, setFormData] =
     useState<CreateQuizForm>({
       subject: "",
@@ -125,6 +138,8 @@ export default function CreateQuiz() {
 
       status:
         "SCHEDULED",
+
+      grade_type: initialGradeType,
 
       show_correct_answers:
         false,
@@ -365,6 +380,9 @@ export default function CreateQuiz() {
 
               status:
                 formData.status,
+
+              grade_type:
+                formData.grade_type,
 
               show_correct_answers:
                 formData.show_correct_answers,
@@ -731,6 +749,28 @@ export default function CreateQuiz() {
               <option value="SEMESTER_3">
                 3rd Semester
               </option>
+            </select>
+          </div>
+
+          {/* Activity Category / Grade Type */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              Grading Category
+            </label>
+
+            <select
+              value={formData.grade_type}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  grade_type: event.target.value as "WRITTEN_WORK" | "PERFORMANCE_TASK" | "FINAL_EXAM",
+                }))
+              }
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+            >
+              <option value="WRITTEN_WORK">Written Work (WW)</option>
+              <option value="PERFORMANCE_TASK">Performance Task (PT)</option>
+              <option value="FINAL_EXAM">Final Exam / Assessment</option>
             </select>
           </div>
 

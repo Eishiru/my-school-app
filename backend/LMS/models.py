@@ -350,6 +350,8 @@ class Quiz(models.Model):
     show_correct_answers = models.BooleanField(default=False)
     shuffle_questions = models.BooleanField(default=False)
     allow_multiple_attempts = models.BooleanField(default=False)
+    activity_mode = models.CharField(max_length=50, default='INDIVIDUAL', blank=True)
+    group_revision = models.IntegerField(default=1, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)

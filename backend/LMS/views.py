@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-from django.db.models import Sum, Max
+from django.db.models import Sum, Max, Q
 from rest_framework import serializers
 from django.db import transaction
 
@@ -59,6 +59,25 @@ def recalc_quarterly_component(*, student, offering, semester, grade_type):
         grade_type=grade_type,
     )
 
+    has_quizzes = quizzes.exists()
+
+    # If no quizzes exist and no existing grade record, skip to avoid creating empty rows
+    grade = QuarterlyGrade.objects.filter(
+        student=student,
+        SubjectOffering=offering,
+        semester=semester,
+    ).first()
+
+    if not grade:
+        if has_quizzes:
+            grade = QuarterlyGrade(
+                student=student,
+                SubjectOffering=offering,
+                semester=semester,
+            )
+        else:
+            return
+
     attempts_qs = QuizAttempt.objects.filter(
         quiz__in=quizzes,
         student=student,
@@ -75,22 +94,19 @@ def recalc_quarterly_component(*, student, offering, semester, grade_type):
     # ✅ total_points counted once per quiz (not per attempt)
     total_points = quizzes.aggregate(s=Sum("total_points"))["s"] or 0.0
 
-    grade, _ = QuarterlyGrade.objects.get_or_create(
-        student=student,
-        SubjectOffering=offering,
-        semester=semester,
-        defaults={}
-    )
+    # If there are quizzes, use their total points; if 0 quizzes remain, default to baseline 100.0 with 0.0 score
+    comp_total = float(total_points) if total_points > 0 else 100.0
+    comp_score = float(total_score) if total_points > 0 else 0.0
 
     if grade_type == "WRITTEN_WORK":
-        grade.written_work_score = float(total_score)
-        grade.written_work_total = float(total_points)
+        grade.written_work_score = comp_score
+        grade.written_work_total = comp_total
     elif grade_type == "PERFORMANCE_TASK":
-        grade.performance_task_score = float(total_score)
-        grade.performance_task_total = float(total_points)
+        grade.performance_task_score = comp_score
+        grade.performance_task_total = comp_total
     elif grade_type == "FINAL_EXAM":
-        grade.quarterly_assessment_score = float(total_score)
-        grade.quarterly_assessment_total = float(total_points)
+        grade.quarterly_assessment_score = comp_score
+        grade.quarterly_assessment_total = comp_total
 
     grade.save()
 
@@ -841,6 +857,56 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(teacher=self.request.user)
 
+    def perform_destroy(self, instance):
+        offering = instance.SubjectOffering
+        semester = instance.semester
+        grade_type = instance.grade_type
+        req_user = getattr(self.request, 'user', None) if self.request else None
+        teacher = req_user if (req_user and req_user.is_authenticated) else instance.teacher
+
+        # 1. Audit log deletions for existing student attempts
+        attempts = list(
+            QuizAttempt.objects.filter(quiz=instance)
+            .select_related('student__user')
+        )
+        for att in attempts:
+            if att.score is not None:
+                try:
+                    GradeChangeLog.objects.create(
+                        teacher=teacher,
+                        student=att.student,
+                        SubjectOffering=offering,
+                        activity=f"{instance.title} ({instance.get_grade_type_display()})",
+                        previous_grade=f"{att.score}/{instance.total_points}",
+                        new_grade="Deleted Activity",
+                        change_type="UPDATE"
+                    )
+                except Exception as log_err:
+                    print(f"Failed to log grade change on quiz delete: {log_err}")
+
+        # 2. Collect enrolled students
+        students = []
+        if offering:
+            students = list(
+                Student.objects.filter(
+                    Q(section=offering.section) | 
+                    Q(quarterly_grades__SubjectOffering=offering)
+                ).distinct()
+            )
+
+        # 3. Delete the quiz (cascades attempts)
+        instance.delete()
+
+        # 4. Recalculate QuarterlyGrade for all enrolled students
+        if offering and semester and grade_type:
+            for student in students:
+                recalc_quarterly_component(
+                    student=student,
+                    offering=offering,
+                    semester=semester,
+                    grade_type=grade_type
+                )
+
     def update(self, request, *args, **kwargs):
         quiz = self.get_object()
         # Publishing/closing is separate from editing quiz content.
@@ -966,6 +1032,137 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
         attempts = quiz.attempts.all().order_by('-started_at')
         serializer = QuizAttemptSerializer(attempts, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='batch-record-scores')
+    def batch_record_scores(self, request):
+        """
+        Batch record or update student scores for activities/quizzes.
+        Payload: {
+            "updates": [
+                { "quiz_id": 12, "student_id": 5, "score": 18 },
+                ...
+            ]
+        }
+        Updates or creates QuizAttempt and creates GradeChangeLog records!
+        """
+        updates = request.data.get('updates', [])
+        if not isinstance(updates, list):
+            return Response({'detail': 'updates must be a list'}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_count = 0
+        from django.utils import timezone
+        now = timezone.now()
+
+        quiz_cache = {}
+        student_cache = {}
+        recalc_targets = set()
+
+        for item in updates:
+            quiz_id = item.get('quiz_id')
+            student_id = item.get('student_id')
+            score_val = item.get('score')
+
+            if quiz_id is None or student_id is None:
+                continue
+
+            if quiz_id not in quiz_cache:
+                try:
+                    quiz_cache[quiz_id] = Quiz.objects.select_related('SubjectOffering').get(id=quiz_id)
+                except Quiz.DoesNotExist:
+                    continue
+            quiz = quiz_cache[quiz_id]
+
+            if student_id not in student_cache:
+                try:
+                    student_cache[student_id] = Student.objects.select_related('user').get(id=student_id)
+                except Student.DoesNotExist:
+                    continue
+            student = student_cache[student_id]
+
+            existing_attempt = QuizAttempt.objects.filter(quiz=quiz, student=student).order_by('-started_at').first()
+            prev_score = existing_attempt.score if existing_attempt else None
+
+            if score_val is None:
+                if existing_attempt and existing_attempt.score is not None:
+                    existing_attempt.score = None
+                    existing_attempt.status = 'IN_PROGRESS'
+                    existing_attempt.save(update_fields=['score', 'status'])
+                    GradeChangeLog.objects.create(
+                        teacher=request.user,
+                        student=student,
+                        SubjectOffering=quiz.SubjectOffering,
+                        activity=f"{quiz.title} ({quiz.get_grade_type_display()})",
+                        previous_grade=f"{prev_score}/{quiz.total_points}" if prev_score is not None else "N/A",
+                        new_grade="Cleared",
+                        change_type="UPDATE"
+                    )
+                    updated_count += 1
+                    if quiz.SubjectOffering and quiz.semester and quiz.grade_type:
+                        recalc_targets.add((student.id, quiz.SubjectOffering.id, quiz.semester.id, quiz.grade_type))
+                continue
+
+            score_float = float(score_val)
+
+            if existing_attempt:
+                if existing_attempt.score != score_float:
+                    prev_score_str = f"{prev_score}/{quiz.total_points}" if prev_score is not None else "N/A"
+                    existing_attempt.score = score_float
+                    existing_attempt.status = 'GRADED'
+                    existing_attempt.submitted_at = existing_attempt.submitted_at or now
+                    existing_attempt.save(update_fields=['score', 'status', 'submitted_at'])
+
+                    GradeChangeLog.objects.create(
+                        teacher=request.user,
+                        student=student,
+                        SubjectOffering=quiz.SubjectOffering,
+                        activity=f"{quiz.title} ({quiz.get_grade_type_display()})",
+                        previous_grade=prev_score_str,
+                        new_grade=f"{score_float}/{quiz.total_points}",
+                        change_type="UPDATE"
+                    )
+                    updated_count += 1
+                    if quiz.SubjectOffering and quiz.semester and quiz.grade_type:
+                        recalc_targets.add((student.id, quiz.SubjectOffering.id, quiz.semester.id, quiz.grade_type))
+            else:
+                QuizAttempt.objects.create(
+                    quiz=quiz,
+                    student=student,
+                    score=score_float,
+                    status='GRADED',
+                    started_at=now,
+                    submitted_at=now
+                )
+                GradeChangeLog.objects.create(
+                    teacher=request.user,
+                    student=student,
+                    SubjectOffering=quiz.SubjectOffering,
+                    activity=f"{quiz.title} ({quiz.get_grade_type_display()})",
+                    previous_grade="N/A",
+                    new_grade=f"{score_float}/{quiz.total_points}",
+                    change_type="CREATE"
+                )
+                updated_count += 1
+                if quiz.SubjectOffering and quiz.semester and quiz.grade_type:
+                    recalc_targets.add((student.id, quiz.SubjectOffering.id, quiz.semester.id, quiz.grade_type))
+
+        for s_id, o_id, sem_id, g_type in recalc_targets:
+            try:
+                s_obj = student_cache.get(s_id) or Student.objects.get(id=s_id)
+                o_obj = SubjectOffering.objects.get(id=o_id)
+                sem_obj = Semester.objects.get(id=sem_id)
+                recalc_quarterly_component(
+                    student=s_obj,
+                    offering=o_obj,
+                    semester=sem_obj,
+                    grade_type=g_type
+                )
+            except Exception as e:
+                print(f"Error recalculating quarterly component in batch_record_scores: {e}")
+
+        return Response({
+            'status': 'success',
+            'updated_count': updated_count
+        }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['get'])
     def student_answers(self, request, pk=None):

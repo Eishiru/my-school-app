@@ -1,5 +1,5 @@
 import { authFetch } from "./apiClient";
-import type { AdvisoryStudent, ApplySemesterWeightsPayload, CreateQuizPayload, CreateQuizQuestionPayload, CreateQuizResponse, DeleteQuizQuestionPayload, DeleteSemesterGradePayload, DeleteSubjectFilePayload, DeleteTeacherQuizPayload, GradeAnswerPayload, QuizItemAnalysisData, RecentQuizGrade, SaveSemesterGradePayload, Semester, SemesterGrade, SemesterSummaryRow, StudentSubmission, TeacherAdvisoryDetail, TeacherQuiz, TeacherQuizActivity, TeacherQuizQuestion, TeacherSemesterGrade, TeacherSubjectFile, TeacherSubjectOffering, TeacherSubjectStudent, TeacherSubjectSubmissionDetail, UpdateQuizQuestionPayload, UpdateQuizStatusPayload, UpdateQuizTimesPayload, UploadSubjectFilePayload } from "../types/teacherTypes";
+import type { AdvisoryStudent, ApplySemesterWeightsPayload, BatchRecordQuizScoresPayload, BatchRecordQuizScoresResponse, CreateQuizPayload, CreateQuizQuestionPayload, CreateQuizResponse, DeleteQuizQuestionPayload, DeleteSemesterGradePayload, DeleteSubjectFilePayload, DeleteTeacherQuizPayload, GradeAnswerPayload, QuizItemAnalysisData, RecentQuizGrade, SaveSemesterGradePayload, Semester, SemesterGrade, SemesterSummaryRow, StudentSubmission, TeacherAdvisoryDetail, TeacherQuiz, TeacherQuizActivity, TeacherQuizQuestion, TeacherSemesterGrade, TeacherSubjectFile, TeacherSubjectOffering, TeacherSubjectStudent, TeacherSubjectSubmissionDetail, UpdateQuizQuestionPayload, UpdateQuizStatusPayload, UpdateQuizTimesPayload, UploadSubjectFilePayload } from "../types/teacherTypes";
 
 export async function getTeacherSubjects(): Promise<TeacherSubjectOffering[]> {
   const response = await authFetch("/subject-offerings/", {
@@ -284,6 +284,24 @@ export async function getTeacherQuizzes(): Promise<TeacherQuiz[]> {
   return Array.isArray(data)
     ? data
     : data.results ?? [];
+}
+
+export async function getTeacherQuizAttempts(
+  quizId: number
+): Promise<{ id: number; quiz: number; student: number; score: number | null; status: string }[]> {
+  const response = await authFetch(
+    `/teacher/quizzes/${quizId}/attempts/`,
+    {
+      method: "GET",
+    }
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : data.results ?? [];
 }
 
 export async function deleteTeacherQuiz(
@@ -590,6 +608,35 @@ export async function createTeacherQuiz(
       errorData?.detail ||
         errorData?.error ||
         `Failed to create quiz: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function batchRecordQuizScores(
+  payload: BatchRecordQuizScoresPayload
+): Promise<BatchRecordQuizScoresResponse> {
+  const response = await authFetch(
+    "/teacher/quizzes/batch-record-scores/",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response
+      .json()
+      .catch(() => null);
+
+    throw new Error(
+      errorData?.detail ||
+        errorData?.error ||
+        `Failed to record scores: ${response.status}`
     );
   }
 

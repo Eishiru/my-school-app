@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addQuizQuestion, applySemesterWeights, createTeacherQuiz, deleteQuizQuestion, deleteSemesterGrade, deleteSubjectFile, deleteTeacherQuiz, deleteTeacherQuizActivity, deleteTeacherSubject, generateQuizAIAnalysis, getAdvisoryStudents, getQuizItemAnalysis, getQuizQuestions, getQuizStudentSubmissions, getRecentQuizGrades, getSemesterGrades, getStudentSemesterSummary, getSubjectFiles, getTeacherAdvisoryDetail, getTeacherQuiz, getTeacherQuizzes, getTeacherSubject, getTeacherSubjectActivities, getTeacherSubjectGrades, getTeacherSubjectQuizzes, getTeacherSubjects, getTeacherSubjectStudents, getTeacherSubjectSubmissionDetail, getTeacherSubmissionsSummary, gradeQuizAnswer, saveSemesterGrade, updateQuizQuestion, updateQuizStatus, updateQuizTimes, uploadSubjectFile } from "../api/teacherApi";
-import { Semester } from "../types/teacherTypes";
+import { addQuizQuestion, applySemesterWeights, batchRecordQuizScores, createTeacherQuiz, deleteQuizQuestion, deleteSemesterGrade, deleteSubjectFile, deleteTeacherQuiz, deleteTeacherQuizActivity, deleteTeacherSubject, generateQuizAIAnalysis, getAdvisoryStudents, getQuizItemAnalysis, getQuizQuestions, getQuizStudentSubmissions, getRecentQuizGrades, getSemesterGrades, getStudentSemesterSummary, getSubjectFiles, getTeacherAdvisoryDetail, getTeacherQuiz, getTeacherQuizAttempts, getTeacherQuizzes, getTeacherSubject, getTeacherSubjectActivities, getTeacherSubjectGrades, getTeacherSubjectQuizzes, getTeacherSubjects, getTeacherSubjectStudents, getTeacherSubjectSubmissionDetail, getTeacherSubmissionsSummary, gradeQuizAnswer, saveSemesterGrade, updateQuizQuestion, updateQuizStatus, updateQuizTimes, uploadSubjectFile } from "../api/teacherApi";
+import { Semester, TeacherQuiz } from "../types/teacherTypes";
 
 export function useTeacherSubjects() {
   return useQuery({
@@ -45,6 +45,39 @@ export function useTeacherSubjectQuizzes(subjectId: number) {
     queryFn: () => getTeacherSubjectQuizzes(subjectId),
     enabled: subjectId > 0,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useTeacherSubjectQuizAttempts(quizzes: TeacherQuiz[]) {
+  const quizIds = quizzes.map((q) => q.id).sort().join(",");
+  return useQuery({
+    queryKey: ["teacher", "quizzes", "attempts-map", quizIds],
+    queryFn: async () => {
+      const map: Record<number, Record<number, number | null>> = {};
+      await Promise.all(
+        quizzes.map(async (quiz) => {
+          try {
+            const attempts = await getTeacherQuizAttempts(quiz.id);
+            for (const att of attempts) {
+              if (att.status === "SUBMITTED" || att.status === "GRADED") {
+                if (!map[att.student]) {
+                  map[att.student] = {};
+                }
+                const prev = map[att.student][quiz.id];
+                if (prev === undefined || (att.score !== null && (prev === null || att.score > prev))) {
+                  map[att.student][quiz.id] = att.score;
+                }
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to load attempts for quiz ${quiz.id}:`, e);
+          }
+        })
+      );
+      return map;
+    },
+    enabled: quizzes.length > 0,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
@@ -143,15 +176,12 @@ export function useDeleteTeacherQuizActivity() {
           "teacher",
           "subjects",
           variables.subjectId,
-          "activities",
         ],
       });
 
       queryClient.invalidateQueries({
         queryKey: [
           "teacher",
-          "subjects",
-          variables.subjectId,
           "quizzes",
         ],
       });
@@ -581,6 +611,22 @@ export function useSaveSemesterGrade() {
           "subjects",
           variables.SubjectOffering,
         ],
+      });
+    },
+  });
+}
+
+export function useBatchRecordQuizScores() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: batchRecordQuizScores,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["teacher", "subjects"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["teacher", "quiz-attempts"],
       });
     },
   });
