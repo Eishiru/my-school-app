@@ -48,12 +48,12 @@ export async function generateBanigPDF() {
   const allStudentData = await Promise.all(
     students.map(async (student: any) => {
       const res = await fetch(
-        `${base}/students/${student.id}/quarterly-summary/`,
+        `${base}/students/${student.id}/semester-summary/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       const grades = await res.json();
-      return { student, grades };
+      return { student, grades: Array.isArray(grades) ? grades : [] };
     })
   );
 
@@ -87,8 +87,8 @@ export async function generateBanigPDF() {
   doc.setFontSize(9);
 
   const nameColWidth = 40; // wider name column
-  const ratingColWidth = 10; // each rating column
-  const subjectBlockWidth = ratingColWidth * 5;
+  const ratingColWidth = 12; // each rating column
+  const subjectBlockWidth = ratingColWidth * 4;
 
   // Build header rows
   const headerRow1: any[] = [
@@ -111,26 +111,26 @@ export async function generateBanigPDF() {
     // Row 1 - Teacher
     headerRow1.push({
       content: s.teacher,
-      colSpan: 5,
+      colSpan: 4,
       styles: { halign: "center" },
     });
 
     // Row 2 - Subject
     headerRow2.push({
       content: s.subject,
-      colSpan: 5,
+      colSpan: 4,
       styles: { halign: "center" },
     });
 
-    // Row 3 - PER RATING
+    // Row 3 - PER RATING / SEMESTER
     headerRow3.push({
-      content: "PER RATING",
-      colSpan: 5,
+      content: "SEMESTER",
+      colSpan: 4,
       styles: { halign: "center" },
     });
 
-    // Row 4 - 1 2 3 4 A
-    ["1", "2", "3", "4", "A"].forEach((r) => {
+    // Row 4 - 1 2 3 A
+    ["1", "2", "3", "A"].forEach((r) => {
       headerRow4.push({ content: r });
     });
   });
@@ -151,12 +151,15 @@ export async function generateBanigPDF() {
         (g: any) => g.subject === subjectInfo.subject
       );
 
+      const sem1 = grade?.semester_1 ?? grade?.sem1;
+      const sem2 = grade?.semester_2 ?? grade?.sem2;
+      const sem3 = grade?.semester_3 ?? grade?.sem3;
+
       row.push(
-        grade?.q1 ?? "",
-        grade?.q2 ?? "",
-        grade?.q3 ?? "",
-        grade?.q4 ?? "",
-        grade?.final ?? ""
+        sem1 != null ? (typeof sem1 === "number" ? sem1.toFixed(1) : sem1) : "",
+        sem2 != null ? (typeof sem2 === "number" ? sem2.toFixed(1) : sem2) : "",
+        sem3 != null ? (typeof sem3 === "number" ? sem3.toFixed(1) : sem3) : "",
+        grade?.final != null ? (typeof grade.final === "number" ? grade.final.toFixed(1) : grade.final) : ""
       );
     });
 

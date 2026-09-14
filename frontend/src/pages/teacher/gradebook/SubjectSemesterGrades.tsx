@@ -27,7 +27,9 @@ import type {
   StudentRowData,
   ActivityCategory,
 } from "./semester-grading/types/gradingSheetTypes";
+
 import type { BatchRecordQuizScoreItem, SaveSemesterGradePayload } from "../../../types/teacherTypes";
+
 import {
   decimalToPercent,
   percentToDecimal,
@@ -40,7 +42,7 @@ import { GradingSheetHeader } from "./semester-grading/components/GradingSheetHe
 import { GradingSummaryCards } from "./semester-grading/components/GradingSummaryCards";
 import { ActivityGradingTable } from "./semester-grading/components/ActivityGradingTable";
 import { GradingMetricsModal } from "./semester-grading/components/GradingMetricsModal";
-import { BackendSuggestionModal } from "./semester-grading/components/BackendSuggestionModal";
+// import { BackendSuggestionModal } from "./semester-grading/components/BackendSuggestionModal";
 import { AddActivityModal } from "./semester-grading/components/AddActivityModal";
 
 const SEMESTER_OPTIONS: { label: string; value: Semester }[] = [
@@ -66,14 +68,12 @@ export default function SubjectSemesterGrades() {
   const subjectId = Number(id || 0);
 
   // Active state
-  const [currentSemester, setCurrentSemester] =
-    useState<Semester>("SEMESTER_1");
+  const [currentSemester, setCurrentSemester] = useState<Semester>("SEMESTER_1");
   const [searchQuery, setSearchQuery] = useState("");
   const [showWeightModal, setShowWeightModal] = useState(false);
-  const [showBackendModal, setShowBackendModal] = useState(false);
+  // const [showBackendModal, setShowBackendModal] = useState(false);
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
-  const [addActivityCategory, setAddActivityCategory] =
-    useState<ActivityCategory>("WRITTEN_WORK");
+  const [addActivityCategory, setAddActivityCategory] = useState<ActivityCategory>("WRITTEN_WORK");
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
 
@@ -777,10 +777,10 @@ export default function SubjectSemesterGrades() {
       />
 
       {/* Backend Integration Guide Modal */}
-      <BackendSuggestionModal
+      {/* <BackendSuggestionModal
         isOpen={showBackendModal}
         onClose={() => setShowBackendModal(false)}
-      />
+      /> */}
 
       {/* Add Manual Activity Modal */}
       <AddActivityModal

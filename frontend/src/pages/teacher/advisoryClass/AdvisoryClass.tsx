@@ -521,8 +521,27 @@ export default function AdvisoryClass() {
                                               lrn:
                                                 student.school_id,
 
+                                              section:
+                                                teacher?.advisory
+                                                  ? `${gradeLabel(
+                                                      teacher.advisory.grade_level
+                                                    )} - ${
+                                                      teacher.advisory.section
+                                                    }`
+                                                  : String(
+                                                      student.section || ""
+                                                    ),
+
                                               Section:
-                                                student.section,
+                                                teacher?.advisory
+                                                  ? `${gradeLabel(
+                                                      teacher.advisory.grade_level
+                                                    )} - ${
+                                                      teacher.advisory.section
+                                                    }`
+                                                  : String(
+                                                      student.section || ""
+                                                    ),
 
                                               grade:
                                                 student.grade_level,
@@ -880,9 +899,9 @@ function SemesterGradeRow({
     SemesterSummaryRow;
 }) {
   const semesterScores = [
-    grade.semester_1,
-    grade.semester_2,
-    grade.semester_3,
+    grade.semester_1 ?? grade.sem1 ?? null,
+    grade.semester_2 ?? grade.sem2 ?? null,
+    grade.semester_3 ?? grade.sem3 ?? null,
   ];
 
   return (

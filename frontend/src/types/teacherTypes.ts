@@ -451,10 +451,15 @@ export type AdvisoryStudent = {
 export type SemesterSummaryRow = {
   subject_offering_id: number;
   subject: string;
+  teacher_name?: string;
 
-  semester_1: number | null;
-  semester_2: number | null;
-  semester_3: number | null;
+  sem1?: number | null;
+  sem2?: number | null;
+  sem3?: number | null;
+
+  semester_1?: number | null;
+  semester_2?: number | null;
+  semester_3?: number | null;
 
   final: number | null;
 };

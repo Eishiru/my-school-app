@@ -13,14 +13,16 @@ import deped_logo from "../../../assets/deped_logo.png";
 
 // ---------------- Types ----------------
 
-type QuarterlySummaryRow = {
+type SemesterSummaryRow = {
   subject_offering_id: number;
   subject: string; // e.g. "Mathematics 7" (SubjectOffering title/name)
-  q1: number | null;
-  q2: number | null;
-  q3: number | null;
-  q4: number | null;
-  final: number | null; // you can compute backend-side or we compute fallback
+  sem1?: number | null;
+  sem2?: number | null;
+  sem3?: number | null;
+  semester_1?: number | null;
+  semester_2?: number | null;
+  semester_3?: number | null;
+  final: number | null;
 };
 
 type StudentDetail = {
@@ -83,8 +85,8 @@ function safeNum(n: any): number | null {
   return Number.isFinite(x) ? x : null;
 }
 
-function computeFinal(q1: number | null, q2: number | null, q3: number | null, q4: number | null): number | null {
-  const nums = [q1, q2, q3, q4].filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+function computeFinal(sem1: number | null, sem2: number | null, sem3: number | null): number | null {
+  const nums = [sem1, sem2, sem3].filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (nums.length === 0) return null;
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
@@ -94,8 +96,353 @@ function remarkFromFinal(final: number | null) {
   return final >= 75 ? "Passed" : "Failed";
 }
 
+export const getBase64ImageFromURL = (url: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.setAttribute("crossOrigin", "anonymous");
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      } else {
+        reject(new Error("Canvas context failed"));
+      }
+    };
+    img.onerror = (error) => reject(error);
+    img.src = url;
+  });
+};
 
+export function buildCoreValuesBody(coreValues: Record<string, Record<string, string[]>> = {}): any[][] {
+  return CORE_VALUES_DATA.flatMap((item) => {
+    const numStatements = item.statements.length;
 
+    return item.statements.map((stmt, i) => {
+      const sem1Rating = coreValues["Semester 1"]?.[item.value]?.[i] || "";
+      const sem2Rating = coreValues["Semester 2"]?.[item.value]?.[i] || "";
+      const sem3Rating = coreValues["Semester 3"]?.[item.value]?.[i] || "";
+
+      const semesterCells = [sem1Rating, sem2Rating, sem3Rating];
+
+      if (i === 0) {
+        return [
+          { content: item.value, rowSpan: numStatements, styles: { valign: "middle", fontStyle: "bold" } },
+          stmt,
+          ...semesterCells,
+        ];
+      }
+      return [stmt, ...semesterCells];
+    });
+  });
+}
+
+export async function generateSF9PDF(params: {
+  studentId: string | number;
+  studentInfo?: {
+    name?: string;
+    age?: number | string;
+    sex?: string;
+    section?: string;
+    lrn?: string;
+    schoolYear?: string;
+  };
+  attendance?: {
+    schoolDays: number[];
+    present: number[];
+    absent: number[];
+  };
+  observedValues?: Record<string, Record<string, string[]>>;
+  token?: string | null;
+  semesterGrades?: SemesterSummaryRow[];
+  studentDetail?: StudentDetail | null;
+}): Promise<void> {
+  const authToken = params.token || localStorage.getItem("access");
+  const sid = Number(params.studentId);
+  const base = "http://127.0.0.1:8000/api";
+
+  let loadedStudent = params.studentDetail || null;
+  if (!loadedStudent && authToken && sid) {
+    try {
+      const res = await fetch(`${base}/students/${sid}/`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.ok) {
+        loadedStudent = (await res.json()) as StudentDetail;
+      }
+    } catch {}
+  }
+
+  let loadedGrades = params.semesterGrades || null;
+  if (!loadedGrades && authToken && sid) {
+    try {
+      const res = await fetch(`${base}/students/${sid}/semester-summary/`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json)) {
+          loadedGrades = json as SemesterSummaryRow[];
+        }
+      }
+    } catch {}
+  }
+
+  const learningRows = (loadedGrades || []).map((r) => {
+    const sem1 = safeNum(r.semester_1 ?? r.sem1);
+    const sem2 = safeNum(r.semester_2 ?? r.sem2);
+    const sem3 = safeNum(r.semester_3 ?? r.sem3);
+    const final = safeNum(r.final) ?? computeFinal(sem1, sem2, sem3);
+
+    return {
+      subject: r.subject,
+      sem1,
+      sem2,
+      sem3,
+      final,
+      remarks: remarkFromFinal(final),
+    };
+  });
+
+  const finals = learningRows
+    .map((r) => r.final)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const generalAverage = finals.length > 0 ? finals.reduce((a, b) => a + b) / finals.length : null;
+
+  const pdf = new jsPDF({
+    orientation: "landscape",
+    unit: "pt",
+    format: "a4",
+  }) as jsPDFCustom;
+
+  // 1) Build Learning Areas body
+  const learningAreasBody: any[] =
+    learningRows.length > 0
+      ? learningRows.map((r) => [
+          r.subject,
+          r.sem1 != null ? String(Math.round(r.sem1)) : "",
+          r.sem2 != null ? String(Math.round(r.sem2)) : "",
+          r.sem3 != null ? String(Math.round(r.sem3)) : "",
+          r.final != null ? String(Math.round(r.final)) : "",
+          r.remarks,
+        ])
+      : [["—", "", "", "", "", ""]];
+
+  const genAvg = generalAverage != null ? Math.round(generalAverage) : null;
+  learningAreasBody.push([
+    { content: "General Average", colSpan: 4, styles: { halign: "right", fontStyle: "bold", valign: "middle" } } as any,
+    genAvg != null ? String(genAvg) : "",
+    genAvg != null ? (genAvg >= 75 ? "Passed" : "Failed") : "",
+  ]);
+
+  // PAGE 1
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(16);
+  pdf.text("REPORT ON LEARNING PROGRESS", 72, 40);
+  pdf.text("AND ACHIEVEMENT", 144, 56);
+
+  autoTable(pdf, {
+    startY: 64,
+    head: [
+      [
+        { content: "LEARNING AREAS", rowSpan: 2, styles: { halign: "justify", valign: "middle", fontSize: 12 } },
+        { content: "SEMESTER", colSpan: 3, styles: { halign: "center", fontSize: 11 } },
+        { content: "FINAL GRADE", rowSpan: 2, styles: { halign: "center", valign: "middle", fontSize: 12 } },
+        { content: "REMARKS", rowSpan: 2, styles: { halign: "justify", valign: "middle", fontSize: 12 } },
+      ],
+      ["1", "2", "3"],
+    ],
+    body: learningAreasBody,
+    theme: "grid",
+    headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
+    styles: { fontSize: 10, textColor: 0, valign: "middle", lineWidth: 0.5, lineColor: [0, 0, 0] },
+    tableWidth: 350,
+  });
+
+  const finalYLeft = pdf.lastAutoTable.finalY;
+
+  pdf.setFontSize(16);
+  pdf.text(`REPORT ON LEARNER'S OBSERVED VALUES`, 430, 40);
+
+  const coreValuesBody = buildCoreValuesBody(params.observedValues || {});
+
+  autoTable(pdf, {
+    startY: 64,
+    margin: { left: 420 },
+    head: [
+      [
+        { content: "Core Values", rowSpan: 2, styles: { halign: "center" } },
+        { content: "Behavior Statement", rowSpan: 2, styles: { halign: "center" } },
+        { content: "Semester", colSpan: 3, styles: { halign: "center" } },
+      ],
+      ["1", "2", "3"],
+    ],
+    body: coreValuesBody,
+    theme: "grid",
+    headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
+    styles: { textColor: 0, fontSize: 10, valign: "middle", lineWidth: 0.5, lineColor: [0, 0, 0] },
+    columnStyles: {
+      0: { cellWidth: 80 },
+      1: { cellWidth: 195 },
+      2: { cellWidth: 35, halign: "center" },
+      3: { cellWidth: 35, halign: "center" },
+      4: { cellWidth: 35, halign: "center" },
+    },
+    tableWidth: 380,
+  });
+
+  autoTable(pdf, {
+    startY: finalYLeft + 15,
+    margin: { left: 50 },
+    head: [[{ content: "Descriptors" }, { content: "Grading Scale" }, { content: "Remarks" }]],
+    body: [
+      ["Outstanding Performance", "90-100 Excellent", "Passed"],
+      ["Very Satisfactory", "85-89 Very Good", "Passed"],
+      ["Satisfactory", "80-84 Good", "Passed"],
+      ["Fairly Satisfactory", "75-79 Fair", "Passed"],
+      ["Did Not Meet Expectations", "Below 75", "Failed"],
+    ],
+    theme: "plain",
+    styles: { fontSize: 10, cellPadding: 2 },
+    columnStyles: { 0: { halign: "left" }, 1: { halign: "left" }, 2: { halign: "left" } },
+    tableWidth: 350,
+  });
+
+  autoTable(pdf, {
+    startY: 447,
+    margin: { left: 430 },
+    head: [[{ content: "Marking" }, { content: " Non-Numerical Rating" }]],
+    body: [
+      ["AO", "Always Observed"],
+      ["SO", "Sometimes Observed"],
+      ["RO", "Rarely Observed"],
+      ["NO", "Not Observed"],
+    ],
+    theme: "plain",
+    styles: { fontSize: 10, cellPadding: 2 },
+    columnStyles: { 0: { halign: "center" }, 1: { halign: "left" } },
+  });
+
+  // PAGE 2
+  pdf.addPage();
+  const pageWidth = pdf.internal.pageSize.width;
+  const centerX = pageWidth / 2;
+  const rightColX = centerX + 40;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(12);
+  pdf.text("Attendance Record", 150, 60, { align: "center" });
+
+  const att = params.attendance || {
+    schoolDays: Array(12).fill(0),
+    present: Array(12).fill(0),
+    absent: Array(12).fill(0),
+  };
+
+  autoTable(pdf, {
+    startY: 70,
+    margin: { left: 40 },
+    tableWidth: 340,
+    head: [MONTHS],
+    body: [
+      ["No. of School Days", ...att.schoolDays.map((v) => (v > 0 ? String(v) : "")), att.schoolDays.reduce((a, b) => a + b, 0)],
+      ["No. of Days Present", ...att.present.map((v, i) => (att.schoolDays[i] > 0 ? String(v) : "")), att.present.reduce((a, b) => a + b, 0)],
+      ["No. of Times Absent", ...att.absent.map((v, i) => (att.schoolDays[i] > 0 ? String(v) : "")), att.absent.reduce((a, b) => a + b, 0)],
+    ],
+    theme: "grid",
+    styles: { fontSize: 7, cellPadding: 3, halign: "center" },
+    headStyles: { fillColor: [255, 255, 255], textColor: 0, lineWidth: 0.5 },
+    columnStyles: { 0: { halign: "left", cellWidth: 70, fontStyle: "bold" } },
+  });
+
+  const sigY = pdf.lastAutoTable.finalY + 40;
+  pdf.setFontSize(11);
+  pdf.text("PARENT/GUARDIAN'S SIGNATURE", 150, sigY, { align: "center" });
+
+  const semesters = ["1st Semester", "2nd Semester", "3rd Semester"];
+  semesters.forEach((s, i) => {
+    const yPos = sigY + 30 + i * 30;
+    pdf.setFont("helvetica", "normal");
+    pdf.text(s, 60, yPos);
+    pdf.line(140, yPos, 350, yPos);
+  });
+
+  try {
+    const imgData = await getBase64ImageFromURL(deped_logo);
+    pdf.addImage(imgData, "PNG", rightColX + 15, 50, 40, 40);
+  } catch (e) {
+    console.error("Logo failed to load", e);
+  }
+
+  pdf.setFontSize(8);
+  pdf.text("Sf 9 - ES", rightColX, 40);
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(10);
+  pdf.text("Republic of the Philippines", centerX + 200, 65, { align: "center" });
+  pdf.text("DEPARTMENT OF EDUCATION", centerX + 200, 78, { align: "center" });
+
+  pdf.setFont("helvetica", "normal");
+  const schoolInfoY = 105;
+  ["Region", "Division", "District", "School"].forEach((label, i) => {
+    pdf.text(`${label}: __________________________________________`, rightColX, schoolInfoY + i * 18);
+  });
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(12);
+  pdf.text("LEARNER'S PROGRESS REPORT CARD", centerX + 200, 190, { align: "center" });
+  pdf.setFontSize(10);
+  pdf.text(`School Year: ${params.studentInfo?.schoolYear || "2025-2026"}`, centerX + 200, 205, { align: "center" });
+
+  const fullName =
+    params.studentInfo?.name ||
+    (loadedStudent ? `${loadedStudent.first_name} ${loadedStudent.last_name}` : "") ||
+    "____________________________________________________";
+  const grade = loadedStudent?.grade_level ? String(loadedStudent.grade_level) : "";
+  const sectionName = params.studentInfo?.section || loadedStudent?.section_name || "";
+  const lrn = params.studentInfo?.lrn || loadedStudent?.school_id || "";
+  const sex = params.studentInfo?.sex || loadedStudent?.sex || "";
+  const age = params.studentInfo?.age || loadedStudent?.age || "";
+
+  pdf.setFont("helvetica", "normal");
+  pdf.text(`Name: ${fullName}`, rightColX, 230);
+  pdf.text(`Age: ${age || "___________"}`, rightColX, 250);
+  pdf.text(`Sex: ${sex || "___________"}`, centerX + 220, 250);
+  pdf.text(`Grade: ${grade || "________"}`, rightColX, 270);
+  pdf.text(`Section: ${sectionName || "_______"}`, centerX + 180, 270);
+  pdf.text(`LRN: ${lrn || "___________"}`, centerX + 280, 270);
+
+  pdf.setFontSize(9);
+  const message =
+    "Dear Parent, \n\nThis report card shows the ability and the progress your child has made in the different learning areas as well as his/her progress in core values.\n\nThe school welcomes you should you desire to know more about your child's progress.";
+  pdf.text(message, rightColX, 300, { maxWidth: 350, align: "justify" });
+
+  pdf.line(rightColX + 200, 380, rightColX + 340, 380);
+  pdf.text("Teacher", rightColX + 270, 390, { align: "center" });
+
+  pdf.line(rightColX, 410, rightColX + 150, 410);
+  pdf.text("Head Teacher / Principal", rightColX + 75, 420, { align: "center" });
+
+  pdf.setFont("helvetica", "bold");
+  pdf.text("Certificate of Transfer", centerX + 200, 450, { align: "center" });
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.text("Admitted to Grade: ________ Section: ________ Room: ________", rightColX, 470);
+  pdf.text("Eligible for Admission to Grade: _____________________________", rightColX, 485);
+
+  pdf.text("Approved:", rightColX, 505);
+  pdf.line(rightColX, 530, rightColX + 140, 530);
+  pdf.text("Head Teacher / Principal", rightColX + 70, 540, { align: "center" });
+
+  pdf.line(rightColX + 200, 530, rightColX + 340, 530);
+  pdf.text("Teacher", rightColX + 270, 540, { align: "center" });
+
+  pdf.save(`SF9_${lrn || loadedStudent?.school_id || "student"}_${loadedStudent?.last_name || ""}.pdf`);
+}
 
 // ---------------- Component ----------------
 
@@ -113,9 +460,9 @@ export default function ExportReportCardPDF(): JSX.Element {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [student, setStudent] = useState<StudentDetail | null>(null);
-  const [quarterly, setQuarterly] = useState<QuarterlySummaryRow[]>([]);
+  const [semesterGrades, setSemesterGrades] = useState<SemesterSummaryRow[]>([]);
 
-  const [coreValues, setCoreValues] = useState<Record<string, string[]>>({});
+  const [coreValues, setCoreValues] = useState<Record<string, Record<string, string[]>>>({});
   const [attendance, setAttendance] = useState({
     schoolDays: Array(12).fill(0),
     present: Array(12).fill(0),
@@ -136,53 +483,7 @@ export default function ExportReportCardPDF(): JSX.Element {
   const token = localStorage.getItem("access");
   const base = "http://127.0.0.1:8000/api";
 
-  // Replicating your JSX Image Helper with Types
-  const getBase64ImageFromURL = (url: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.setAttribute("crossOrigin", "anonymous");
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL("image/png"));
-        } else {
-          reject(new Error("Canvas context failed"));
-        }
-      };
-      img.onerror = (error) => reject(error);
-      img.src = url;
-    });
-  };
-
-  // manual inut of core values body since you don’t have a backend for it, but you can replace this with an API call if you do have one. Just make sure to match the structure expected by the PDF generation (value, statements[], quarterCells[]).
-  const coreValuesBody: any[][] = useMemo(() => {
-    return CORE_VALUES_DATA.flatMap((item) => {
-      const numStatements = item.statements.length;
-
-      return item.statements.map((stmt, i) => {
-        // Extract rating for this specific statement across all 4 quarters
-        const q1Rating = coreValues.Q1?.[item.value]?.[i] || "";
-        const q2Rating = coreValues.Q2?.[item.value]?.[i] || "";
-        const q3Rating = coreValues.Q3?.[item.value]?.[i] || "";
-        const q4Rating = coreValues.Q4?.[item.value]?.[i] || "";
-
-        const quarterCells = [q1Rating, q2Rating, q3Rating, q4Rating];
-
-        if (i === 0) {
-          return [
-            { content: item.value, rowSpan: numStatements, styles: { valign: 'middle', fontStyle: 'bold' } },
-            stmt,
-            ...quarterCells
-          ];
-        }
-        return [stmt, ...quarterCells];
-      });
-    });
-  }, [coreValues]);
+  const coreValuesBody = useMemo(() => buildCoreValuesBody(coreValues), [coreValues]);
 
 
 
@@ -201,7 +502,7 @@ export default function ExportReportCardPDF(): JSX.Element {
 
 
 
-  // Load student + quarterly grades
+  // Load student + semester grades
   useEffect(() => {
     const run = async () => {
       if (!token) {
@@ -229,32 +530,28 @@ export default function ExportReportCardPDF(): JSX.Element {
           const studentData = (await studentRes.json()) as StudentDetail;
           setStudent(studentData);
         } else {
-          // don’t hard fail if you don’t have this endpoint, but log it
           const err = await studentRes.json().catch(() => ({}));
           console.warn("Student detail endpoint not available:", err);
           setStudent(null);
         }
 
-        // quarterly summary (required for grades table)
-        const qRes = await fetch(`${base}/students/${sid}/quarterly-summary/`, {
+        // semester summary (required for grades table)
+        const semRes = await fetch(`${base}/students/${sid}/semester-summary/`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (!qRes.ok) {
-          const err = await qRes.json().catch(() => ({}));
-          console.error("Quarterly summary failed:", err);
-          setErrorMsg("Failed to load quarterly grades for this student.");
-          setQuarterly([]);
-          return;
+        if (!semRes.ok) {
+          const err = await semRes.json().catch(() => ({}));
+          console.warn("Semester summary empty or failed:", err);
+          setSemesterGrades([]);
+        } else {
+          const semData = (await semRes.json()) as SemesterSummaryRow[];
+          setSemesterGrades(Array.isArray(semData) ? semData : []);
         }
-
-        const qData = (await qRes.json()) as QuarterlySummaryRow[];
-        setQuarterly(Array.isArray(qData) ? qData : []);
       } catch (e) {
         console.error(e);
-        setErrorMsg("Network error while loading SF9 data.");
-        setStudent(null);
-        setQuarterly([]);
+        console.warn("Network error while loading SF9 grades; continuing with empty grades.");
+        setSemesterGrades([]);
       } finally {
         setLoading(false);
       }
@@ -262,33 +559,27 @@ export default function ExportReportCardPDF(): JSX.Element {
 
     run();
   }, [studentId, token]);
-  // console.log("Quarterly data:", quarterly);
-  // console.log("Student detail:", student);
-  // console.log("Core values body:", coreValuesBody);
-  // console.log("Learning rows:", quarterly);
 
 
   // Build rows for PDF + preview
   const learningRows = useMemo(() => {
     // normalize finals just in case backend didn’t compute
-    return quarterly.map((r) => {
-      const q1 = safeNum(r.q1);
-      const q2 = safeNum(r.q2);
-      const q3 = safeNum(r.q3);
-      const q4 = safeNum(r.q4);
-      const final = safeNum(r.final) ?? computeFinal(q1, q2, q3, q4);
+    return semesterGrades.map((r) => {
+      const sem1 = safeNum(r.semester_1 ?? r.sem1);
+      const sem2 = safeNum(r.semester_2 ?? r.sem2);
+      const sem3 = safeNum(r.semester_3 ?? r.sem3);
+      const final = safeNum(r.final) ?? computeFinal(sem1, sem2, sem3);
 
       return {
         subject: r.subject,
-        q1,
-        q2,
-        q3,
-        q4,
+        sem1,
+        sem2,
+        sem3,
         final,
         remarks: remarkFromFinal(final),
       };
     });
-  }, [quarterly]);
+  }, [semesterGrades]);
 
   const generalAverage = useMemo(() => {
     const finals = learningRows
@@ -300,237 +591,21 @@ export default function ExportReportCardPDF(): JSX.Element {
 
   
   const handleExport = async (): Promise<void> => {
-    // If no data, stop
-    if (learningRows.length === 0) {
-      alert("No quarterly grades found. Please add grades first.");
-      return;
-    }
-
-    const pdf = new jsPDF({
-      orientation: "landscape",
-      unit: "pt",
-      format: "a4",
-    }) as jsPDFCustom;
-
-    // 1) Build Learning Areas body from quarterly grades
-    const learningAreasBody: any[] = learningRows.map((r) => [
-      r.subject,
-      r.q1 != null ? String(Math.round(r.q1)) : "",
-      r.q2 != null ? String(Math.round(r.q2)) : "",
-      r.q3 != null ? String(Math.round(r.q3)) : "",
-      r.q4 != null ? String(Math.round(r.q4)) : "",
-      r.final != null ? String(Math.round(r.final)) : "",
-      r.remarks,
-    ]);
-
-    // General Average row
-    const genAvg = generalAverage != null ? Math.round(generalAverage) : null;
-    learningAreasBody.push([
-      { content: "General Average", colSpan: 5, styles: { halign: "right", fontStyle: "bold", valign: "middle" } } as any,
-      genAvg != null ? String(genAvg) : "",
-      genAvg != null ? (genAvg >= 75 ? "Passed" : "Failed") : "",
-    ]);
-
-    // 2) PAGE 1
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(16);
-    pdf.text("REPORT ON LEARNING PROGRESS", 72, 40);
-    pdf.text("AND ACHIEVEMENT", 144, 56);
-
-    autoTable(pdf, {
-      startY: 64,
-      head: [
-        [
-          { content: "LEARNING AREAS", rowSpan: 2, styles: { halign: "justify", valign: "middle", fontSize: 12 } },
-          { content: "QUARTER", colSpan: 4, styles: { halign: "center", fontSize: 11 } },
-          { content: "FINAL GRADE", rowSpan: 2, styles: { halign: "center", valign: "middle", fontSize: 12 } },
-          { content: "REMARKS", rowSpan: 2, styles: { halign: "justify", valign: "middle", fontSize: 12 } },
-        ],
-        ["1", "2", "3", "4"],
-      ],
-      body: learningAreasBody,
-      theme: "grid",
-      headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
-      styles: { fontSize: 10, textColor: 0, valign: "middle", lineWidth: 0.5, lineColor: [0, 0, 0] },
-      tableWidth: 350,
+    await generateSF9PDF({
+      studentId: studentId!,
+      studentInfo: manualStudent,
+      attendance,
+      observedValues: coreValues,
+      token,
+      semesterGrades,
+      studentDetail: student,
     });
-
-    const finalYLeft = pdf.lastAutoTable.finalY;
-
-    pdf.setFontSize(16);
-    pdf.text(`REPORT ON LEARNER'S OBSERVED VALUES`, 430, 40);
-
-    autoTable(pdf, {
-      startY: 64,
-      margin: { left: 420 },
-      head: [
-        [
-          { content: "Core Values", rowSpan: 2, styles: { halign: "center"} },
-          { content: "Behavior Statement", rowSpan: 2, styles: { halign: "center"} },
-          { content: "Quarter", colSpan: 4, styles: { halign: "center"} },
-        ],
-        ["1", "2", "3", "4"],
-      ],
-      body: coreValuesBody,
-      theme: "grid",
-      headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
-      styles: { textColor: 0, fontSize: 10, valign: "middle", lineWidth: 0.5, lineColor: [0, 0, 0] },
-      columnStyles: {
-        0: { cellWidth: 80 },  // Core Values
-        1: { cellWidth: 180 }, // Behavior Statement
-        2: { cellWidth: 25, halign: 'center' }, // Q1
-        3: { cellWidth: 25, halign: 'center' }, // Q2
-        4: { cellWidth: 25, halign: 'center' }, // Q3
-        5: { cellWidth: 25, halign: 'center' }, // Q4
-      },
-      tableWidth: 380,
-    });
-
-    autoTable(pdf, {
-      startY: finalYLeft + 15,
-      margin: { left: 50 },
-      head: [[{ content: "Descriptors" }, { content: "Grading Scale" }, { content: "Remarks" }]],
-      body: [
-        ["Outstanding Performance", "90-100 Excellent", "Passed"],
-        ["Very Satisfactory", "85-89 Very Good", "Passed"],
-        ["Satisfactory", "80-84 Good", "Passed"],
-        ["Fairly Satisfactory", "75-79 Fair", "Passed"],
-        ["Did Not Meet Expectations", "Below 75", "Failed"],
-      ],
-      theme: "plain",
-      styles: { fontSize: 10, cellPadding: 2 },
-      columnStyles: { 0: { halign: "left" }, 1: { halign: "left" }, 2: { halign: "left" } },
-      tableWidth: 350,
-    });
-
-    autoTable(pdf, {
-      startY: 447,
-      margin: { left: 430 },
-      head: [[{ content: "Marking" }, { content: " Non-Numerical Rating" }]],
-      body: [
-        ["AO", "Always Observed"],
-        ["SO", "Sometimes Observed"],
-        ["RO", "Rarely Observed"],
-        ["NO", "Not Observed"],
-      ],
-      theme: "plain",
-      styles: { fontSize: 10, cellPadding: 2 },
-      columnStyles: { 0: { halign: "center" }, 1: { halign: "left" } },
-    });
-
-    // PAGE 2 (unchanged layout, but fill name/grade/section/lrn if available)
-    pdf.addPage();
-    const pageWidth = pdf.internal.pageSize.width;
-    const centerX = pageWidth / 2;
-    const rightColX = centerX + 40;
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.text("Attendance Record", 150, 60, { align: "center" });
-
-    autoTable(pdf, {
-      startY: 70,
-      margin: { left: 40 },
-      tableWidth: 340,
-      head: [MONTHS],
-      body: [
-        ["No. of School Days", ...attendance.schoolDays.map(v => v || v), attendance.schoolDays.reduce((a,b)=>a+b,0)],
-        ["No. of Days Present", ...attendance.present.map(v => v || v), attendance.present.reduce((a,b)=>a+b,0)],
-        ["No. of Times Absent", ...attendance.absent.map(v => v || v), attendance.absent.reduce((a,b)=>a+b,0)],
-      ],
-      theme: "grid",
-      styles: { fontSize: 7, cellPadding: 3, halign: "center" },
-      headStyles: { fillColor: [255, 255, 255], textColor: 0, lineWidth: 0.5 },
-      columnStyles: { 0: { halign: "left", cellWidth: 70, fontStyle: "bold" } },
-    });
-
-    const sigY = pdf.lastAutoTable.finalY + 40;
-    pdf.setFontSize(11);
-    pdf.text("PARENT/GUARDIAN'S SIGNATURE", 150, sigY, { align: "center" });
-
-    const quarters = ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"];
-    quarters.forEach((q, i) => {
-      const yPos = sigY + 30 + i * 30;
-      pdf.setFont("helvetica", "normal");
-      pdf.text(q, 60, yPos);
-      pdf.line(130, yPos, 350, yPos);
-    });
-
-    try {
-      const imgData = await getBase64ImageFromURL(deped_logo);
-      pdf.addImage(imgData, "PNG", rightColX + 15, 50, 40, 40);
-    } catch (e) {
-      console.error("Logo failed to load", e);
-    }
-
-    pdf.setFontSize(8);
-    pdf.text("Sf 9 - ES", rightColX, 40);
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(10);
-    pdf.text("Republic of the Philippines", centerX + 200, 65, { align: "center" });
-    pdf.text("DEPARTMENT OF EDUCATION", centerX + 200, 78, { align: "center" });
-
-    pdf.setFont("helvetica", "normal");
-    const schoolInfoY = 105;
-    ["Region", "Division", "District", "School"].forEach((label, i) => {
-      pdf.text(`${label}: __________________________________________`, rightColX, schoolInfoY + i * 18);
-    });
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.text("LEARNER'S PROGRESS REPORT CARD", centerX + 200, 190, { align: "center" });
-    pdf.setFontSize(10);
-    pdf.text(`School Year: ${manualStudent.schoolYear || "2024-2025"}`, centerX + 200, 205, { align: "center" });
-
-    const fullName = manualStudent.name || (student ? `${student.first_name} ${student.last_name}` : "");
-    const grade = student?.grade_level ? String(student.grade_level) : "";
-    const sectionName = manualStudent.section || student?.section_name || "";
-    const lrn = manualStudent.lrn || student?.school_id || "";
-    const sex = manualStudent.sex || student?.sex || "";
-    const age = manualStudent.age || student?.age || "";
-
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`Name: ${fullName || "____________________________________________________"}`, rightColX, 230);
-    pdf.text(`Age: ${age || "___________"}`, rightColX, 250);
-    pdf.text(`Sex: ${sex || "___________"}`, centerX + 220, 250);
-    pdf.text(`Grade: ${grade || "________"}`, rightColX, 270);
-    pdf.text(`Section: ${sectionName || "_______"}`, centerX + 180, 270);
-    pdf.text(`LRN: ${lrn || "___________"}`, centerX + 280, 270);
-
-    pdf.setFontSize(9);
-    const message =
-      "Dear Parent, \n\nThis report card shows the ability and the progress your child has made in the different learning areas as well as his/her progress in core values.\n\nThe school welcomes you should you desire to know more about your child's progress.";
-    pdf.text(message, rightColX, 300, { maxWidth: 350, align: "justify" });
-
-    pdf.line(rightColX + 200, 380, rightColX + 340, 380);
-    pdf.text("Teacher", rightColX + 270, 390, { align: "center" });
-
-    pdf.line(rightColX, 410, rightColX + 150, 410);
-    pdf.text("Head Teacher / Principal", rightColX + 75, 420, { align: "center" });
-
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Certificate of Transfer", centerX + 200, 450, { align: "center" });
-
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(8);
-    pdf.text("Admitted to Grade: ________ Section: ________ Room: ________", rightColX, 470);
-    pdf.text("Eligible for Admission to Grade: _____________________________", rightColX, 485);
-
-    pdf.text("Approved:", rightColX, 505);
-    pdf.line(rightColX, 530, rightColX + 140, 530);
-    pdf.text("Head Teacher / Principal", rightColX + 70, 540, { align: "center" });
-
-    pdf.line(rightColX + 200, 530, rightColX + 340, 530);
-    pdf.text("Teacher", rightColX + 270, 540, { align: "center" });
-
-    pdf.save(`SF9_${student?.school_id ?? "student"}_${student?.last_name ?? ""}.pdf`);
   };
 
   if (loading) {
     return (
       <div className="p-8 bg-white rounded-3xl border border-slate-200 shadow-sm">
-        <p className="text-slate-600 font-bold">Loading quarterly grades…</p>
+        <p className="text-slate-600 font-bold">Loading semester grades…</p>
       </div>
     );
   }
@@ -617,7 +692,7 @@ export default function ExportReportCardPDF(): JSX.Element {
           <div className="flex items-center justify-between mb-4 px-2">
             <div className="flex flex-col">
               <h3 className="text-sm font-black text-slate-700 uppercase tracking-tight">Live SF9 Preview</h3>
-              <p className="text-[10px] text-slate-500 font-medium">Draft generated from backend quarterly grades</p>
+              <p className="text-[10px] text-slate-500 font-medium">Draft generated from backend semester grades</p>
             </div>
             <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button
@@ -656,8 +731,8 @@ export default function ExportReportCardPDF(): JSX.Element {
                           <th className="border border-black p-2 text-center" rowSpan={2}>
                             LEARNING AREAS
                           </th>
-                          <th className="border border-black p-1 text-center" colSpan={4}>
-                            QUARTER
+                          <th className="border border-black p-1 text-center" colSpan={3}>
+                            SEMESTER
                           </th>
                           <th className="border border-black p-1 text-center" rowSpan={2}>
                             FINAL GRADE
@@ -667,9 +742,9 @@ export default function ExportReportCardPDF(): JSX.Element {
                           </th>
                         </tr>
                         <tr className="font-bold text-center">
-                          {["1", "2", "3", "4"].map((q) => (
-                            <th key={q} className="border border-black p-1 w-10">
-                              {q}
+                          {["1", "2", "3"].map((s) => (
+                            <th key={s} className="border border-black p-1 w-10">
+                              {s}
                             </th>
                           ))}
                         </tr>
@@ -679,10 +754,9 @@ export default function ExportReportCardPDF(): JSX.Element {
                         {learningRows.map((r, i) => (
                           <tr key={i}>
                             <td className="border border-black p-2 font-medium">{r.subject}</td>
-                            <td className="border border-black p-1 text-center">{safeNum(r.q1) != null ? Math.round(r.q1) : ""}</td>
-                            <td className="border border-black p-1 text-center">{safeNum(r.q2) != null ? Math.round(r.q2) : ""}</td>
-                            <td className="border border-black p-1 text-center">{safeNum(r.q3) != null ? Math.round(r.q3) : ""}</td>
-                            <td className="border border-black p-1 text-center">{safeNum(r.q4) != null ? Math.round(r.q4) : ""}</td>
+                            <td className="border border-black p-1 text-center">{safeNum(r.sem1) != null ? Math.round(r.sem1) : ""}</td>
+                            <td className="border border-black p-1 text-center">{safeNum(r.sem2) != null ? Math.round(r.sem2) : ""}</td>
+                            <td className="border border-black p-1 text-center">{safeNum(r.sem3) != null ? Math.round(r.sem3) : ""}</td>
                             <td className="border border-black p-1 text-center font-bold">
                               {r.final != null ? r.final.toFixed(2) : ""}
                             </td>
@@ -697,7 +771,7 @@ export default function ExportReportCardPDF(): JSX.Element {
                         ))}
 
                         <tr className="font-bold bg-slate-50">
-                          <td className="border border-black p-2 text-right" colSpan={5}>
+                          <td className="border border-black p-2 text-right" colSpan={4}>
                             General Average
                           </td>
                           <td className="border border-black p-1 text-center underline">
@@ -715,7 +789,7 @@ export default function ExportReportCardPDF(): JSX.Element {
                     </table>
                   </div>
 
-                  {/* RIGHT: VALUES (still static AO) */}
+                  {/* RIGHT: VALUES */}
                   <div>
                     <div className="text-center mb-6">
                       <h1 className="text-lg font-bold">REPORT ON LEARNER'S OBSERVED VALUES</h1>
@@ -730,14 +804,14 @@ export default function ExportReportCardPDF(): JSX.Element {
                           <th className="border border-black p-2 text-center" rowSpan={2}>
                             Behavior Statement
                           </th>
-                          <th className="border border-black p-1 text-center" colSpan={4}>
-                            Quarter
+                          <th className="border border-black p-1 text-center" colSpan={3}>
+                            Semester
                           </th>
                         </tr>
                         <tr className="font-bold text-center">
-                          {["1", "2", "3", "4"].map((q) => (
-                            <th key={q} className="border border-black p-1 w-8">
-                              {q}
+                          {["1", "2", "3"].map((s) => (
+                            <th key={s} className="border border-black p-1 w-8">
+                              {s}
                             </th>
                           ))}
                         </tr>
@@ -745,7 +819,6 @@ export default function ExportReportCardPDF(): JSX.Element {
 
                       <tbody>
                         {CORE_VALUES_DATA.map((val, idx) => {
-                          const categoryRatings = coreValues[val.value] || [];
                           return (
                             <React.Fragment key={idx}>
                               {val.statements.map((stmt, sIdx) => (
@@ -757,10 +830,10 @@ export default function ExportReportCardPDF(): JSX.Element {
                                   )}
                                   <td className="border border-black p-2 leading-tight">{stmt}</td>
                                   
-                                  {/* FIX: Ensure we render exactly 4 <td> cells for every behavior statement row */}
-                                  {["Q1", "Q2", "Q3", "Q4"].map((qKey) => (
-                                    <td key={qKey} className="border border-black p-1 text-center font-medium w-8">
-                                      {coreValues[qKey]?.[val.value]?.[sIdx] || ""}
+                                  {/* Render exactly 3 cells for the 3 semesters */}
+                                  {["Semester 1", "Semester 2", "Semester 3"].map((semKey) => (
+                                    <td key={semKey} className="border border-black p-1 text-center font-medium w-8">
+                                      {coreValues[semKey]?.[val.value]?.[sIdx] || ""}
                                     </td>
                                   ))}
                                 </tr>
@@ -794,7 +867,7 @@ export default function ExportReportCardPDF(): JSX.Element {
                             <tr>
                               <td className="border border-black p-2 text-left font-bold bg-slate-50">No. of School Days</td>
                               {attendance.schoolDays.map((v, i) => (
-                                <td key={i} className="border border-black p-1">{v || v}</td>
+                                <td key={i} className="border border-black p-1">{v > 0 ? v : ""}</td>
                               ))}
                               <td className="border border-black p-1 font-bold">
                                 {attendance.schoolDays.reduce((a, b) => a + b, 0)}
@@ -804,7 +877,7 @@ export default function ExportReportCardPDF(): JSX.Element {
                             <tr>
                                 <td className="border border-black p-2 text-left font-bold bg-slate-50">No. of Days Present</td>
                                 {attendance.present.map((v, i) => (
-                                  <td key={i} className="border border-black p-1">{v || v}</td>
+                                  <td key={i} className="border border-black p-1">{attendance.schoolDays[i] > 0 ? v : ""}</td>
                                 ))}
                                 <td className="border border-black p-1 font-bold">
                                   {attendance.present.reduce((a, b) => a + b, 0)}
@@ -814,7 +887,7 @@ export default function ExportReportCardPDF(): JSX.Element {
                             <tr>
                                 <td className="border border-black p-2 text-left font-bold bg-slate-50">No. of Days Absent</td>
                                 {attendance.absent.map((v, i) => (
-                                  <td key={i} className="border border-black p-1">{v || v}</td>
+                                  <td key={i} className="border border-black p-1">{attendance.schoolDays[i] > 0 ? v : ""}</td>
                                 ))}
                                 <td className="border border-black p-1 font-bold">
                                   {attendance.absent.reduce((a, b) => a + b, 0)}
@@ -830,9 +903,9 @@ export default function ExportReportCardPDF(): JSX.Element {
                         Parent / Guardian's Signature
                         </h3>
                         <div className="space-y-8">
-                        {["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"].map((q) => (
-                            <div key={q} className="flex items-center gap-4">
-                            <span className="text-[10px] font-bold w-20">{q}:</span>
+                        {["1st Semester", "2nd Semester", "3rd Semester"].map((s) => (
+                            <div key={s} className="flex items-center gap-4">
+                            <span className="text-[10px] font-bold w-24">{s}:</span>
                             <div className="flex-1 border-b border-black"></div>
                             </div>
                         ))}

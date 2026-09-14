@@ -742,9 +742,22 @@ class StudentViewSet(ModelViewSet):
             item = by_offering.setdefault(grade.SubjectOffering_id, {
                 "subject_offering_id": grade.SubjectOffering_id,
                 "subject": grade.SubjectOffering.name,
-                "sem1": None, "sem2": None, "sem3": None, "final": None,
+                "sem1": None, "sem2": None, "sem3": None,
+                "semester_1": None, "semester_2": None, "semester_3": None,
+                "final": None,
             })
-            item[grade.semester.name.lower()] = grade.final_grade
+            sem_name = (grade.semester.name or "").lower()
+            score = grade.final_grade
+            if "1" in sem_name:
+                item["sem1"] = score
+                item["semester_1"] = score
+            elif "2" in sem_name:
+                item["sem2"] = score
+                item["semester_2"] = score
+            elif "3" in sem_name:
+                item["sem3"] = score
+                item["semester_3"] = score
+
         for item in by_offering.values():
             values = [item[key] for key in ("sem1", "sem2", "sem3") if item[key] is not None]
             item["final"] = round(sum(values) / len(values), 2) if values else None
