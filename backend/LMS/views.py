@@ -65,6 +65,13 @@ def recalc_quarterly_component(*, student, offering, semester, grade_type):
         status__in=["SUBMITTED", "GRADED"],
     )
 
+    # A shared credit overrides the member's other attempts for this quiz.
+    # Preserve historical grades until the group receives a shared grade.
+    credited_quiz_ids = QuizAttempt.objects.filter(
+        student=student, quiz__in=quizzes, group__isnull=False, status='GRADED'
+    ).values('quiz_id')
+    attempts_qs = attempts_qs.exclude(quiz_id__in=credited_quiz_ids, group__isnull=True)
+
     # ✅ best score per quiz
     best_rows = (
         attempts_qs.values("quiz_id")
@@ -822,7 +829,11 @@ class LoginView(APIView):
     
 # ==================== TEACHER QUIZ VIEWS ====================
 
-class TeacherQuizViewSet(viewsets.ModelViewSet):
+from .quiz_groups import QuizGroupsMixin
+from .quiz_duplicate import QuizDuplicateMixin
+
+
+class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelViewSet):
     """ViewSet for teachers to manage quizzes"""
     permission_classes = [IsAuthenticated]
     
@@ -843,6 +854,22 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         quiz = self.get_object()
+        # A title-only update is allowed without changing the quiz content/status.
+        if set(request.data) == {"title"}:
+            from rest_framework import serializers as drf_serializers
+            if request.user.role != "TEACHER" or quiz.teacher_id != request.user.id:
+                return Response({"detail": "Only the owning teacher can edit this title."}, status=403)
+            field = drf_serializers.CharField(
+                max_length=Quiz._meta.get_field("title").max_length,
+                allow_blank=False, trim_whitespace=True,
+            )
+            try:
+                title = field.run_validation(request.data["title"])
+            except drf_serializers.ValidationError as exc:
+                return Response({"title": exc.detail}, status=400)
+            quiz.title = title
+            quiz.save(update_fields=["title", "updated_at"])
+            return Response({"id": quiz.id, "title": quiz.title})
         # Publishing/closing is separate from editing quiz content.
         if set(request.data) == {"status"}:
             new_status = request.data["status"]
@@ -850,14 +877,20 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
                 return Response({"status": ["Invalid status."]}, status=400)
             if new_status == "DRAFT" and quiz.status != "DRAFT":
                 return Response({"detail": "Published quizzes cannot revert to draft."}, status=400)
-            if new_status in ("SCHEDULED", "OPEN"):
+            if new_status == "SCHEDULED":
+                if quiz.open_time is None or quiz.close_time is None:
+                    return Response({"detail": "Set open and close times before scheduling."}, status=400)
                 if quiz.close_time <= quiz.open_time:
                     return Response({"detail": "Closing time must be after opening time."}, status=400)
                 if quiz.close_time <= timezone.now():
                     return Response({"detail": "This quiz's closing time has passed."}, status=400)
+            if new_status == "OPEN":
+                # An explicit Open action starts now and requires manual closing.
+                quiz.open_time = timezone.now()
+                quiz.close_time = None
             quiz.status = new_status
             quiz.status = quiz.current_status()
-            quiz.save(update_fields=["status", "updated_at"])
+            quiz.save(update_fields=["status", "open_time", "close_time", "updated_at"])
             return Response(QuizSerializer(quiz, context=self.get_serializer_context()).data)
         if not quiz.is_editable():
             return Response({"detail": "Only an editable draft can have its content changed."}, status=400)
@@ -964,7 +997,7 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
         """Get all student attempts for this quiz"""
         quiz = self.get_object()
         attempts = quiz.attempts.all().order_by('-started_at')
-        serializer = QuizAttemptSerializer(attempts, many=True)
+        serializer = QuizAttemptSerializer(attempts, many=True, context={"request": request})
         return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
@@ -984,7 +1017,7 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
                 'submitted_at': attempt.submitted_at,
                 'score': attempt.score,
                 'status': attempt.status,
-                'answers': QuizAnswerSerializer(answers, many=True).data
+                'answers': QuizAnswerSerializer(answers, many=True, context={"request": request}).data
             }
             result.append(student_data)
         
@@ -1004,6 +1037,9 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
             if answer.attempt.quiz.teacher != request.user:
                 return Response({'error': 'You do not have permission to grade this answer'},
                             status=status.HTTP_403_FORBIDDEN)
+
+            if answer.attempt.quiz.activity_mode == 'GROUP':
+                return Response({'error': 'Use Group Grading in Manage Activity to grade all members together.'}, status=400)
 
             answer.points_earned = float(points_earned)
             answer.teacher_feedback = feedback
@@ -1029,7 +1065,7 @@ class TeacherQuizViewSet(viewsets.ModelViewSet):
 
             return Response({
                 'message': 'Answer graded successfully',
-                'answer': QuizAnswerSerializer(answer).data,
+                'answer': QuizAnswerSerializer(answer, context={"request": request}).data,
                 'new_total_score': total_score
             })
 
@@ -1285,7 +1321,7 @@ def student_quiz_attempts(request):
         student=request.user.student_profile
     ).order_by('-started_at')
     
-    serializer = QuizAttemptSerializer(attempts, many=True)
+    serializer = QuizAttemptSerializer(attempts, many=True, context={"request": request})
     return Response(serializer.data)
 
 

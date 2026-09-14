@@ -333,12 +333,21 @@ class Quiz(models.Model):
     teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_quizzes", null=True, blank=True)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    ACTIVITY_MODE_CHOICES = [
+        ('INDIVIDUAL', 'Individual'),
+        ('GROUP', 'By Group'),
+    ]
+    activity_mode = models.CharField(
+        max_length=10, choices=ACTIVITY_MODE_CHOICES, default='INDIVIDUAL'
+    )
     grade_type = models.CharField(max_length=20, choices=GRADE_TYPE_CHOICES, default='WRITTEN_WORK')
     
+    group_revision = models.PositiveIntegerField(default=0)
+
     # Time management
     posted_at = models.DateTimeField(auto_now_add=True, null=True)
-    open_time = models.DateTimeField()
-    close_time = models.DateTimeField()
+    open_time = models.DateTimeField(null=True, blank=True)
+    close_time = models.DateTimeField(null=True, blank=True)
     time_limit = models.IntegerField(help_text="Minutes to complete quiz")
     
     # Quiz settings
@@ -368,20 +377,21 @@ class Quiz(models.Model):
         if self.status in ("DRAFT", "CLOSED"):
             return self.status
         now = now or timezone.now()
-        if now >= self.close_time:
+        if self.close_time is not None and now >= self.close_time:
             return "CLOSED"
-        if now < self.open_time:
+        if self.open_time is not None and now < self.open_time:
             return "SCHEDULED"
         return "OPEN"
 
     @classmethod
     def sync_statuses(cls, queryset):
         """Persist due transitions when quizzes are requested (no background worker)."""
+        from django.db.models import Q
         now = timezone.now()
         active = queryset.filter(status__in=["SCHEDULED", "OPEN"])
         active.filter(close_time__lte=now).update(status="CLOSED", updated_at=now)
-        active.filter(close_time__gt=now, open_time__gt=now).exclude(status="SCHEDULED").update(status="SCHEDULED", updated_at=now)
-        active.filter(close_time__gt=now, open_time__lte=now).exclude(status="OPEN").update(status="OPEN", updated_at=now)
+        active.filter(Q(close_time__isnull=True) | Q(close_time__gt=now), open_time__gt=now).exclude(status="SCHEDULED").update(status="SCHEDULED", updated_at=now)
+        active.filter(Q(close_time__isnull=True) | Q(close_time__gt=now), Q(open_time__isnull=True) | Q(open_time__lte=now)).exclude(status="OPEN").update(status="OPEN", updated_at=now)
 
     def is_open(self):
         return self.current_status() == "OPEN"
@@ -406,6 +416,23 @@ class Quiz(models.Model):
         return True
     
 
+
+
+class QuizActivityGroup(models.Model):
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='activity_groups')
+    name = models.CharField(max_length=80)
+    members = models.ManyToManyField(Student, related_name='quiz_activity_groups', blank=True)
+    source_attempt = models.ForeignKey('QuizAttempt', on_delete=models.SET_NULL, null=True, blank=True, related_name='group_source_for')
+    question_grades = models.JSONField(default=list, blank=True)
+    graded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='graded_activity_groups')
+    graded_at = models.DateTimeField(null=True, blank=True)
+    grading_revision = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return self.name
 
 
 class QuizQuestion(models.Model):
@@ -444,11 +471,17 @@ class QuizAttempt(models.Model):
     
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name="attempts")
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="quiz_attempts")
+    group = models.ForeignKey(QuizActivityGroup, on_delete=models.CASCADE, null=True, blank=True, related_name='grade_credits')
     started_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     score = models.FloatField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IN_PROGRESS')
     
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['group', 'student'], name='unique_group_grade_credit'),
+        ]
+
     def __str__(self):
         return f"{self.student.user.email} - {self.quiz.title}"
 

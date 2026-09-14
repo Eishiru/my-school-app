@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import EditQuizTitleDialog from "./EditQuizTitleDialog";
+import DuplicateQuizDialog from "./DuplicateQuizDialog";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -57,7 +60,7 @@ function statusRank(quiz: TeacherQuiz) {
 
 function statusChip(quiz: TeacherQuiz) {
   const base =
-    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider";
+    "inline-flex items-center gap-2 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wider";
 
   if (quiz.is_open) {
     return (
@@ -115,24 +118,24 @@ function StatCard({
   hint: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-6">
+    <div className="activity-stat relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="p-3">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+            <div className="activity-stat-label text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
               {label}
             </div>
 
-            <div className="mt-3 text-4xl font-black tracking-tight text-slate-900">
+            <div className="mt-1 text-2xl font-black tracking-tight text-slate-900">
               {value}
             </div>
 
-            <div className="mt-2 text-xs text-slate-500">
+            <div className="mt-1 text-xs text-slate-500">
               {hint}
             </div>
           </div>
 
-          <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700">
+          <div className="h-9 w-9 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
             {icon}
           </div>
         </div>
@@ -141,7 +144,89 @@ function StatCard({
   );
 }
 
+function QuizActions({ quiz, deleting, onEdit, onDuplicate, onDelete }: {
+  quiz: { id: number; title: string }; deleting: boolean;
+  onEdit: () => void; onDuplicate: () => void; onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, maxHeight: 240 });
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const close = () => { setOpen(false); trigger.current?.focus(); };
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const anchor = trigger.current?.getBoundingClientRect();
+      if (!anchor) return;
+      const height = window.innerHeight;
+      const below = height - anchor.bottom - 12;
+      const above = anchor.top - 12;
+      const useBelow = below >= 200 || below >= above;
+      const maxHeight = Math.max(60, Math.min(240, useBelow ? below : above));
+      const actualHeight = Math.min(menu.current?.scrollHeight ?? 200, maxHeight);
+      setPosition({
+        top: useBelow ? anchor.bottom + 6 : Math.max(6, anchor.top - actualHeight - 6),
+        left: Math.max(8, Math.min(anchor.right - 184, window.innerWidth - 192)),
+        maxHeight,
+      });
+    };
+    place();
+    menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menu.current?.contains(target) && !trigger.current?.contains(target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
+  const itemClass = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none';
+  return <>
+    <button ref={trigger} type="button" aria-haspopup="menu" aria-expanded={open}
+      aria-controls={open ? menuId : undefined} aria-label={`Actions for ${quiz.title}`}
+      onClick={() => setOpen(value => !value)}
+      onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); } }}
+      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+      Actions <span aria-hidden="true">▾</span>
+    </button>
+    {open && createPortal(<div ref={menu} id={menuId} role="menu" aria-label={`Actions for ${quiz.title}`}
+      style={{ position: 'fixed', top: position.top, left: position.left, maxHeight: position.maxHeight, width: 184, zIndex: 1000 }}
+      className="overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null) && event.relatedTarget !== trigger.current) setOpen(false); }}
+      onKeyDown={event => {
+        if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+        if (event.key === 'Tab') { close(); return; }
+        const items = Array.from(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
+        const current = items.indexOf(document.activeElement as HTMLElement);
+        let next = current;
+        if (event.key === 'ArrowDown') next = (current + 1) % items.length;
+        else if (event.key === 'ArrowUp') next = (current - 1 + items.length) % items.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = items.length - 1;
+        else return;
+        event.preventDefault(); items[next]?.focus();
+      }}>
+      <Link role="menuitem" tabIndex={-1} to={`/teacher/activities/${quiz.id}`} onClick={close} className={itemClass}><ExternalLink size={15} />Manage</Link>
+      <button role="menuitem" tabIndex={-1} type="button" onClick={() => { close(); onEdit(); }} className={itemClass}>Edit title</button>
+      <button role="menuitem" tabIndex={-1} type="button" onClick={() => { close(); onDuplicate(); }} className={itemClass}>Duplicate</button>
+      <div className="my-1 border-t border-slate-100" />
+      <button role="menuitem" tabIndex={-1} type="button" disabled={deleting} onClick={() => { close(); onDelete(); }}
+        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-rose-700 hover:bg-rose-50 focus:bg-rose-50 focus:outline-none disabled:opacity-50">
+        <Trash2 size={15} />{deleting ? 'Deleting…' : 'Delete'}
+      </button>
+    </div>, document.body)}
+  </>;
+}
+
 export default function TeacherQuizList() {
+  const [editingTitle, setEditingTitle] = useState<{ id: number; title: string } | null>(null);
+  const [duplicateQuiz, setDuplicateQuiz] = useState<{ id: number; title: string } | null>(null);
   // UI state
   const [query, setQuery] = useState("");
 
@@ -172,6 +257,23 @@ export default function TeacherQuizList() {
       window.removeEventListener("focus", refresh);
     };
   }, [refetch]);
+
+  const pageRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const measure = () => {
+      const element = pageRef.current;
+      if (element) {
+        element.style.setProperty("--activity-top", `${Math.max(0, element.getBoundingClientRect().top)}px`);
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
+  }, [isLoading, isError]);
 
   const deleteQuiz = useDeleteTeacherQuiz();
 
@@ -314,7 +416,9 @@ export default function TeacherQuizList() {
             )}
           </div>
         </div>
-      </main>
+        {duplicateQuiz && <DuplicateQuizDialog key={duplicateQuiz.id} quiz={duplicateQuiz} onClose={() => setDuplicateQuiz(null)} onCreated={() => { void refetch(); }} />}
+      {editingTitle && <EditQuizTitleDialog key={editingTitle.id} quiz={editingTitle} onClose={() => setEditingTitle(null)} onSaved={() => { void refetch(); }} />}
+    </main>
     );
   }
 
@@ -343,15 +447,57 @@ export default function TeacherQuizList() {
               : "Try again"}
           </button>
         </div>
-      </main>
+        {duplicateQuiz && <DuplicateQuizDialog key={duplicateQuiz.id} quiz={duplicateQuiz} onClose={() => setDuplicateQuiz(null)} onCreated={() => { void refetch(); }} />}
+      {editingTitle && <EditQuizTitleDialog key={editingTitle.id} quiz={editingTitle} onClose={() => setEditingTitle(null)} onSaved={() => { void refetch(); }} />}
+    </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main ref={pageRef} className="teacher-activity-page bg-slate-50">
+      <style>{`
+        .teacher-activity-page { width: 100%; min-width: 0; }
+        .teacher-activity-page, .teacher-activity-page * { box-sizing: border-box; }
+        .teacher-activity-page .activity-header { flex-shrink: 0; }
+        .teacher-activity-page .activity-header-inner { padding: 12px 16px; }
+        .teacher-activity-page .activity-filters { margin-top: 10px; gap: 8px; }
+        .teacher-activity-page .activity-filters input { padding-top: 8px; padding-bottom: 8px; font-size: 13px; }
+        .teacher-activity-page .activity-sort { min-width: 0; padding: 8px 10px; }
+        .teacher-activity-page .activity-sort select { min-width: 0; max-width: 100%; font-size: 12px; }
+        .teacher-activity-page .activity-content { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 12px 16px; }
+        .teacher-activity-page .activity-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; flex-shrink: 0; }
+        .teacher-activity-page .activity-list { display: flex; flex-direction: column; min-height: 0; border-radius: 16px; }
+        .teacher-activity-page .activity-list-heading { flex-shrink: 0; padding: 10px 14px; }
+        .teacher-activity-page .activity-list-heading .activity-list-title { margin-top: 2px; font-size: 18px; line-height: 1.3; }
+        .teacher-activity-page .activity-list-heading .activity-list-description { margin-top: 3px; font-size: 12px; }
+        .teacher-activity-page .activity-rows { min-height: 0; }
+        .teacher-activity-page .activity-row { padding: 12px 14px; }
+        .teacher-activity-page .activity-row-layout { gap: 12px; }
+        .teacher-activity-page .activity-row-title { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+        .teacher-activity-page .activity-row-subject { margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; }
+        .teacher-activity-page .activity-row-details { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 8px; }
+        .teacher-activity-page .activity-row-details > div { border: 0; border-radius: 0; padding: 0; }
+        .teacher-activity-page .activity-row-details > div > div:last-child { margin-top: 2px; }
+        .teacher-activity-page .activity-row-actions { flex-shrink: 0; }
+        .teacher-activity-page .activity-row-actions a,
+        .teacher-activity-page .activity-row-actions button { padding: 7px 10px; font-size: 12px; border-radius: 9px; }
+        .teacher-activity-page .activity-list-footer { flex-shrink: 0; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; border-top: 1px solid #e2e8f0; padding: 8px 14px; font-size: 12px; color: #64748b; background: #f8fafc; }
+        @media (min-width: 768px) {
+          .teacher-activity-page .activity-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+        @media (min-width: 1024px) and (min-height: 600px) {
+          .teacher-activity-page { display: flex; flex-direction: column; height: calc(100dvh - var(--activity-top, 80px) - 16px); overflow: hidden; }
+          .teacher-activity-page .activity-content, .teacher-activity-page .activity-list { flex: 1; }
+          .teacher-activity-page .activity-rows, .teacher-activity-page .activity-empty { flex: 1; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
+        }
+        @media (max-width: 639px) {
+          .teacher-activity-page .activity-header-inner, .teacher-activity-page .activity-content { padding: 10px; }
+          .teacher-activity-page .activity-stat .activity-stat-label { letter-spacing: normal; }
+        }
+      `}</style>
       {/* Header */}
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/85 backdrop-blur">
-        <div className="mx-auto px-4 md:px-6 py-4">
+      <div className="activity-header border-b border-slate-200 bg-slate-50">
+        <div className="activity-header-inner">
           <div className="flex items-center gap-3">
             <div className="min-w-0">
               <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
@@ -396,7 +542,7 @@ export default function TeacherQuizList() {
           </div>
 
           {/* Search + sort */}
-          <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="activity-filters flex flex-col sm:flex-row sm:items-center">
             <div className="flex-1 relative">
               <Search
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -408,19 +554,21 @@ export default function TeacherQuizList() {
                 onChange={(e) =>
                   setQuery(e.target.value)
                 }
+                aria-label="Search activities"
                 placeholder="Search by title, subject, or quiz ID…"
                 className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="inline-flex items-center gap-2 px-3 py-3 rounded-2xl border border-slate-200 bg-white">
+              <div className="activity-sort inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white">
                 <ArrowUpDown
                   size={18}
                   className="text-slate-500"
                 />
 
                 <select
+                  aria-label="Sort activities"
                   value={sort}
                   onChange={(e) =>
                     setSort(
@@ -472,9 +620,9 @@ export default function TeacherQuizList() {
       </div>
 
       {/* Content */}
-      <div className="mx-auto max-w-8xl px-4 md:px-6 py-6 md:py-10">
+      <div className="activity-content">
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="activity-stats">
           <StatCard
             icon={<Layers size={18} />}
             label="Total"
@@ -509,19 +657,19 @@ export default function TeacherQuizList() {
         </div>
 
         {/* Activity list */}
-        <div className="mt-6 rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="p-6 md:p-8 border-b border-slate-100">
+        <div className="activity-list border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="activity-list-heading border-b border-slate-100">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
                   Activities
                 </div>
 
-                <div className="mt-2 text-2xl md:text-3xl font-black text-slate-900">
+                <div className="activity-list-title font-black text-slate-900">
                   Quiz List
                 </div>
 
-                <div className="mt-2 text-sm text-slate-600">
+                <div className="activity-list-description text-slate-600">
                   Manage your quizzes,
                   schedules, and questions.
                 </div>
@@ -538,7 +686,7 @@ export default function TeacherQuizList() {
           </div>
 
           {visibleQuizzes.length === 0 ? (
-            <div className="p-8">
+            <div className="activity-empty p-4">
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6">
                 <div className="font-black text-slate-900">
                   No activities found
@@ -561,7 +709,7 @@ export default function TeacherQuizList() {
               </div>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
+            <div className="activity-rows divide-y divide-slate-100">
               {visibleQuizzes.map(
                 (quiz) => {
                   const isDeleting =
@@ -572,19 +720,19 @@ export default function TeacherQuizList() {
                   return (
                     <div
                       key={quiz.id}
-                      className="p-5 md:p-6 hover:bg-slate-50 transition"
+                      className="activity-row hover:bg-slate-50 transition"
                     >
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                      <div className="activity-row-layout flex flex-col md:flex-row md:items-center md:justify-between">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-lg md:text-xl font-black text-slate-900">
+                            <div className="activity-row-title font-black text-slate-900">
                               {quiz.title}
                             </div>
 
                             {statusChip(quiz)}
                           </div>
 
-                          <div className="mt-2 text-sm text-slate-600">
+                          <div className="activity-row-subject text-slate-600">
                             Subject:{" "}
                             <span className="font-bold text-slate-800">
                               {
@@ -593,7 +741,7 @@ export default function TeacherQuizList() {
                             </span>
                           </div>
 
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-xs text-slate-600">
+                          <div className="activity-row-details text-xs text-slate-600">
                             <div className="rounded-2xl border border-slate-200 px-3 py-2">
                               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                                 Opens
@@ -632,34 +780,11 @@ export default function TeacherQuizList() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to={`/teacher/activities/${quiz.id}`}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600"
-                          >
-                            <ExternalLink
-                              size={16}
-                            />
-
-                            Manage
-                          </Link>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDelete(
-                                quiz.id
-                              )
-                            }
-                            disabled={isDeleting}
-                            className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-700 hover:bg-rose-100 disabled:opacity-50"
-                          >
-                            <Trash2 size={16} />
-
-                            {isDeleting
-                              ? "Deleting..."
-                              : "Delete"}
-                          </button>
+                        <div className="activity-row-actions">
+                          <QuizActions quiz={quiz} deleting={isDeleting}
+                            onEdit={() => setEditingTitle({ id: quiz.id, title: quiz.title })}
+                            onDuplicate={() => setDuplicateQuiz({ id: quiz.id, title: quiz.title })}
+                            onDelete={() => handleDelete(quiz.id)} />
                         </div>
                       </div>
                     </div>
@@ -668,8 +793,14 @@ export default function TeacherQuizList() {
               )}
             </div>
           )}
+          <div className="activity-list-footer">
+            <span>{visibleQuizzes.length} of {quizzes.length} activities</span>
+            <span>Sorted by {sort === "status" ? "status" : sort === "title" ? "title" : sort === "subject" ? "subject" : "opening time"}</span>
+          </div>
         </div>
       </div>
+      {duplicateQuiz && <DuplicateQuizDialog key={duplicateQuiz.id} quiz={duplicateQuiz} onClose={() => setDuplicateQuiz(null)} onCreated={() => { void refetch(); }} />}
+      {editingTitle && <EditQuizTitleDialog key={editingTitle.id} quiz={editingTitle} onClose={() => setEditingTitle(null)} onSaved={() => { void refetch(); }} />}
     </main>
   );
 }

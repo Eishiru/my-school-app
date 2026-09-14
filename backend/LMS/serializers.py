@@ -577,6 +577,7 @@ class QuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = [
+            'activity_mode',
             'id', 'quiz_id', 'SubjectOffering', 'subject_name', 'teacher', 'teacher_name',
             'title', 'description', 'posted_at', 'open_time', 'close_time',
             'time_limit', 'semester', 'semester_id', 'total_points', 'passing_score', 'status',
@@ -614,6 +615,7 @@ class QuizCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = [
+            'activity_mode',
             'id', 'SubjectOffering', 'title', 'description', 'open_time', 'close_time',
             'time_limit', 'semester', 'total_points', 'passing_score', 'status',
             'show_correct_answers', 'shuffle_questions', 'allow_multiple_attempts',
@@ -621,6 +623,23 @@ class QuizCreateUpdateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'total_points']
         
+    def validate(self, attrs):
+        from django.utils import timezone
+        attrs = super().validate(attrs)
+        status = attrs.get("status", getattr(self.instance, "status", "DRAFT"))
+        # New drafts have no schedule; explicitly opening starts immediately.
+        if self.instance is None and status in ("DRAFT", "OPEN"):
+            attrs["open_time"] = timezone.now() if status == "OPEN" else None
+            attrs["close_time"] = None
+            return attrs
+        opens = attrs.get("open_time", getattr(self.instance, "open_time", None))
+        closes = attrs.get("close_time", getattr(self.instance, "close_time", None))
+        if status == "SCHEDULED" and (opens is None or closes is None):
+            raise serializers.ValidationError({"status": "Scheduled quizzes require open and close times."})
+        if opens is not None and closes is not None and closes <= opens:
+            raise serializers.ValidationError({"close_time": "Close time must be after open time."})
+        return attrs
+
     def validate_questions(self, questions):
         import math
         if self.instance is not None:
@@ -679,6 +698,7 @@ class StudentQuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = [
+            'activity_mode',
             'id', 'quiz_id', 'status', 'SubjectOffering', 'subject_name', 'teacher_name', 'title',
             'description', 'open_time', 'close_time', 'time_limit',
             'total_points', 'allow_multiple_attempts', 'question_count',
@@ -739,7 +759,11 @@ class QuizAnswerSerializer(serializers.ModelSerializer):
         return None
     
     def get_answer_file_url(self, obj):
-        return obj.answer_file_url
+        url = obj.answer_file_url
+        if not url:
+            return ""
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request is not None else url
     
     def get_graded_by_name(self, obj):
         if obj.graded_by:
@@ -748,6 +772,8 @@ class QuizAnswerSerializer(serializers.ModelSerializer):
 
 
 class QuizAttemptSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source='group.name', read_only=True, default=None)
+    is_group_credit = serializers.SerializerMethodField()
     answers = QuizAnswerSerializer(many=True, read_only=True)
     student_name = serializers.SerializerMethodField()
     quiz_title = serializers.CharField(source='quiz.title', read_only=True)
@@ -756,10 +782,13 @@ class QuizAttemptSerializer(serializers.ModelSerializer):
         model = QuizAttempt
         fields = [
             'id', 'quiz', 'quiz_title', 'student', 'student_name',
-            'started_at', 'submitted_at', 'score', 'status', 'answers'
+            'started_at', 'submitted_at', 'score', 'status', 'answers', 'group_id', 'group_name', 'is_group_credit'
         ]
         read_only_fields = ['student', 'started_at', 'score']
     
+    def get_is_group_credit(self, obj):
+        return obj.group_id is not None
+
     def get_student_name(self, obj):
         """Get student's full name"""
         user = obj.student.user

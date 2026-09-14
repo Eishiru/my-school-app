@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
@@ -56,6 +56,34 @@ export default function SubjectGradesTab() {
     );
   }, [grades, selectedSemester]);
 
+  const pageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page) return;
+    const fit = () => {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const top = Math.max(0, page.getBoundingClientRect().top);
+      const bottomPadding = page.parentElement
+        ? parseFloat(getComputedStyle(page.parentElement).paddingBottom) || 0 : 0;
+      page.style.setProperty('--grades-tab-height', `${Math.max(0, viewportHeight - top - bottomPadding - 12)}px`);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    // Observe the surrounding subject page as its header/tabs can change height.
+    let parent = page.parentElement;
+    while (parent && parent !== document.body) {
+      observer.observe(parent);
+      parent = parent.parentElement;
+    }
+    window.addEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', fit);
+      window.visualViewport?.removeEventListener('resize', fit);
+    };
+  }, [subjectId, isLoading, isError]);
+
   if (!subjectId) {
     return (
       <div className="p-6 text-rose-600">
@@ -100,9 +128,29 @@ export default function SubjectGradesTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div ref={pageRef} className="subject-grades-tab">
+      <style>{`
+        .subject-grades-tab { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+        .subject-grades-tab .grades-toolbar { flex-shrink: 0; gap: 10px; }
+        .subject-grades-tab .grades-toolbar select { padding: 8px 12px; max-width: 100%; }
+        .subject-grades-tab .grades-panel { min-width: 0; border-radius: 12px; }
+        .subject-grades-tab .grades-scroll { overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+        .subject-grades-tab table { width: 100%; min-width: 600px; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+        .subject-grades-tab th { position: sticky; top: 0; z-index: 1; background: #f8fafc; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+        .subject-grades-tab td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; }
+        .subject-grades-tab th:first-child { width: 30%; }
+        .subject-grades-tab td:first-child { overflow-wrap: anywhere; }
+        .subject-grades-tab td:not(:first-child) { white-space: nowrap; }
+        .subject-grades-tab tbody tr:last-child td { border-bottom: 0; }
+        .subject-grades-tab .grades-scroll:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
+        @media (min-width: 1024px) and (min-height: 600px) {
+          .subject-grades-tab { height: var(--grades-tab-height, 60dvh); min-height: 0; overflow: hidden; }
+          .subject-grades-tab .grades-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+          .subject-grades-tab .grades-scroll { flex: 1; min-height: 0; }
+        }
+      `}</style>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="grades-toolbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">
             Grades
@@ -115,6 +163,7 @@ export default function SubjectGradesTab() {
 
         {/* Semester Filter */}
         <select
+          aria-label="Filter grades by semester"
           value={selectedSemester}
           onChange={(e) =>
             setSelectedSemester(
@@ -144,33 +193,33 @@ export default function SubjectGradesTab() {
       </div>
 
       {/* Grades Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="grades-panel bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         {filteredGrades.length === 0 ? (
           <div className="p-8 text-center text-slate-600">
             No semester grades yet.
           </div>
         ) : (
-          <div className="overflow-auto">
-            <table className="min-w-[900px] w-full text-sm">
+          <div className="grades-scroll" tabIndex={0} role="region" aria-label="Student grades">
+            <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr className="text-left text-slate-500">
-                  <th className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3">
                     Student
                   </th>
 
-                  <th className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3">
                     Semester
                   </th>
 
-                  <th className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3">
                     Written Work
                   </th>
 
-                  <th className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3">
                     Final Grade
                   </th>
 
-                  <th className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3">
                     Remarks
                   </th>
                 </tr>

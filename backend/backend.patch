@@ -1,0 +1,25 @@
+--- a/LMS/views.py
++++ b/LMS/views.py
+@@ -854,6 +854,22 @@
+ 
+     def update(self, request, *args, **kwargs):
+         quiz = self.get_object()
++        # A title-only update is allowed without changing the quiz content/status.
++        if set(request.data) == {"title"}:
++            from rest_framework import serializers as drf_serializers
++            if request.user.role != "TEACHER" or quiz.teacher_id != request.user.id:
++                return Response({"detail": "Only the owning teacher can edit this title."}, status=403)
++            field = drf_serializers.CharField(
++                max_length=Quiz._meta.get_field("title").max_length,
++                allow_blank=False, trim_whitespace=True,
++            )
++            try:
++                title = field.run_validation(request.data["title"])
++            except drf_serializers.ValidationError as exc:
++                return Response({"title": exc.detail}, status=400)
++            quiz.title = title
++            quiz.save(update_fields=["title", "updated_at"])
++            return Response({"id": quiz.id, "title": quiz.title})
+         # Publishing/closing is separate from editing quiz content.
+         if set(request.data) == {"status"}:
+             new_status = request.data["status"]

@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import QuizGroupsPanel from './QuizGroupsPanel';
+import QuizGroupGradingPanel from './QuizGroupGradingPanel';
 
 import {
   ArrowLeft,
@@ -148,24 +150,24 @@ function StatCard({
   hint: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-6">
+    <div className="manage-stat relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="p-3">
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
               {label}
             </div>
 
-            <div className="mt-3 text-4xl font-black tracking-tight text-slate-900">
+            <div className="mt-1 text-2xl font-black tracking-tight text-slate-900">
               {value}
             </div>
 
-            <div className="mt-2 text-xs text-slate-500">
+            <div className="mt-1 text-xs text-slate-500">
               {hint}
             </div>
           </div>
 
-          <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700">
+          <div className="h-9 w-9 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
             {icon}
           </div>
         </div>
@@ -187,8 +189,8 @@ function ModalShell({
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm p-4 flex items-center justify-center">
-      <div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl border border-white/10 overflow-hidden">
-        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b">
+      <div className="w-full max-w-3xl max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl bg-white shadow-2xl border border-white/10 overflow-hidden">
+        <div className="flex shrink-0 items-start justify-between gap-4 px-6 py-4 border-b">
           <div className="min-w-0">
             <div className="text-[11px] font-black uppercase tracking-widest text-slate-400">
               {title}
@@ -211,7 +213,7 @@ function ModalShell({
           </button>
         </div>
 
-        <div className="p-6 max-h-[80vh] overflow-y-auto">
+        <div className="p-4 min-h-0 overflow-y-auto">
           {children}
         </div>
       </div>
@@ -219,8 +221,8 @@ function ModalShell({
   );
 }
 
-function createDefaultQuestion() {
-  return {
+function createDefaultQuestion(groupMode = false) {
+  const question = {
     question_text: '',
     question_type:
       'MULTIPLE_CHOICE' as QuestionType,
@@ -249,6 +251,11 @@ function createDefaultQuestion() {
       },
     ] as QuizChoice[],
   };
+  if (groupMode) {
+    question.question_type = 'SHORT_ANSWER';
+    question.choices = [];
+  }
+  return question;
 }
 
 export default function ManageQuiz() {
@@ -296,6 +303,18 @@ export default function ManageQuiz() {
     refetch: refetchQuestions,
   } = useQuizQuestions(quizId);
 
+  const isGroupActivity = (quiz as { activity_mode?: string } | undefined)?.activity_mode === 'GROUP';
+  const pageRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const measure = () => {
+      const element = pageRef.current;
+      if (element) element.style.setProperty('--manage-top', `${Math.max(0, element.getBoundingClientRect().top)}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [quizLoading, questionsLoading, quizError, questionsError]);
+
   const updateTimesMutation =
     useUpdateQuizTimes();
 
@@ -317,7 +336,7 @@ export default function ManageQuiz() {
 
   const [activeTab, setActiveTab] =
     useState<
-      'questions' | 'settings'
+      'questions' | 'settings' | 'groups' | 'group-grading'
     >('questions');
 
   const [
@@ -329,7 +348,7 @@ export default function ManageQuiz() {
     newQuestion,
     setNewQuestion,
   ] = useState(
-    createDefaultQuestion()
+    createDefaultQuestion(isGroupActivity)
   );
 
   const [
@@ -369,6 +388,12 @@ export default function ManageQuiz() {
     setNewStatus,
   ] =
     useState<QuizStatus>('DRAFT');
+
+  useEffect(() => {
+    if (isGroupActivity) {
+      setNewQuestion(prev => ({ ...prev, question_type: 'SHORT_ANSWER', choices: [] }));
+    }
+  }, [isGroupActivity]);
 
   // Sync server quiz -> local form fields
   useEffect(() => {
@@ -744,7 +769,7 @@ export default function ManageQuiz() {
         );
 
         setNewQuestion(
-          createDefaultQuestion()
+          createDefaultQuestion(isGroupActivity)
         );
       } catch (error) {
         console.error(
@@ -1092,10 +1117,42 @@ export default function ManageQuiz() {
     );
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main ref={pageRef} className="manage-quiz-page bg-slate-50">
+      <style>{`
+        .manage-quiz-page { width:100%; min-width:0; }
+        .manage-quiz-page, .manage-quiz-page * { box-sizing:border-box; }
+        .manage-quiz-page .manage-header { flex-shrink:0; }
+        .manage-quiz-page .manage-header-inner { padding:12px 16px; }
+        .manage-quiz-page .manage-header-inner > div:first-child { flex-wrap:wrap; }
+        .manage-quiz-page .manage-header button,.manage-quiz-page .manage-header a { padding:7px 10px; font-size:12px; border-radius:10px; }
+        .manage-quiz-page .manage-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+        .manage-quiz-page .manage-content { display:flex; flex-direction:column; min-height:0; gap:12px; padding:12px 16px; }
+        .manage-quiz-page .manage-stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; flex-shrink:0; }
+        .manage-quiz-page .manage-card { display:flex; flex-direction:column; min-height:0; border-radius:16px; }
+        .manage-quiz-page .manage-card-heading { flex-shrink:0; padding:10px 14px; }
+        .manage-quiz-page .manage-card-title { margin-top:2px; font-size:18px; }
+        .manage-quiz-page .manage-card-description { margin-top:3px; font-size:12px; }
+        .manage-quiz-page .manage-lock { margin-bottom:8px; padding:8px 10px; font-size:12px; }
+        .manage-quiz-page .manage-lock > div:last-child { font-size:12px; }
+        .manage-quiz-page .manage-body { padding:12px; min-height:0; }
+        .manage-quiz-page .manage-question-row { padding:10px 12px; }
+        .manage-quiz-page .manage-question-row > div { gap:10px; }
+        .manage-quiz-page .manage-question-row .font-black { overflow-wrap:anywhere; }
+        .manage-quiz-page .manage-settings > div { padding:14px; border-radius:12px; }
+        .manage-quiz-page .manage-settings input,.manage-quiz-page .manage-settings select { padding:8px; }
+        .manage-quiz-page .manage-groups-tab { height:100%; min-height:0; }
+        .manage-quiz-page .manage-groups-tab[hidden] { display:none; }
+        @media(min-width:768px) { .manage-quiz-page .manage-stats { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+        @media(min-width:1024px) and (min-height:600px) {
+          .manage-quiz-page { display:flex; flex-direction:column; height:calc(100dvh - var(--manage-top,80px) - 16px); overflow:hidden; }
+          .manage-quiz-page .manage-content,.manage-quiz-page .manage-card { flex:1; }
+          .manage-quiz-page .manage-body { flex:1; overflow-y:auto; scrollbar-gutter:stable; }
+          .manage-quiz-page .manage-body-groups { overflow:hidden; scrollbar-gutter:auto; }
+        }
+      `}</style>
       {/* Sticky top bar */}
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/85 backdrop-blur">
-        <div className="mx-auto px-4 md:px-6 py-4">
+      <div className="manage-header border-b border-slate-200 bg-slate-50">
+        <div className="manage-header-inner">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -1143,6 +1200,10 @@ export default function ManageQuiz() {
                 Item Analysis
               </Link>
 
+              {isGroupActivity ? <button type="button" onClick={() => setActiveTab('group-grading')}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white hover:bg-indigo-600">
+                <Pencil size={16} /> Group Grading
+              </button> : (
               <Link
                 to={`/teacher/activities/${quizId}/grading`}
                 className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600 transition"
@@ -1153,11 +1214,12 @@ export default function ManageQuiz() {
 
                 Manual Grading
               </Link>
+              )}
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="mt-3 flex gap-2">
+          <div className="manage-tabs">
             <button
               type="button"
               onClick={() =>
@@ -1209,13 +1271,21 @@ export default function ManageQuiz() {
                 Schedule & Status
               </span>
             </button>
+            {isGroupActivity && <button type="button" onClick={() => setActiveTab('groups')}
+              className={`rounded-xl border px-4 py-2 text-sm font-black ${activeTab === 'groups' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
+              Groups
+            </button>}
+            {isGroupActivity && <button type="button" onClick={() => setActiveTab('group-grading')}
+              className={`rounded-xl border px-4 py-2 text-sm font-black ${activeTab === 'group-grading' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
+              Group Grading
+            </button>}
           </div>
         </div>
       </div>
 
-      <div className="mx-auto px-4 md:px-6 py-6 md:py-10">
+      <div className="manage-content">
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="manage-stats">
           <StatCard
             icon={
               <ClipboardList
@@ -1251,7 +1321,7 @@ export default function ManageQuiz() {
             label="Time Limit"
             value={
               quiz.time_limit
-                ? `${quiz.time_limit}m`
+                ? `${String(Math.floor(quiz.time_limit / 60)).padStart(2, '0')}:${String(quiz.time_limit % 60).padStart(2, '0')}`
                 : '—'
             }
             hint="Per attempt"
@@ -1280,10 +1350,10 @@ export default function ManageQuiz() {
         </div>
 
         {/* Main card */}
-        <div className="mt-6 rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="p-6 md:p-8 border-b border-slate-100">
-            {!isEditable && (
-              <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div className="manage-card border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="manage-card-heading border-b border-slate-100">
+            {!isEditable && activeTab === 'questions' && (
+              <div className="manage-lock rounded-xl border border-amber-200 bg-amber-50">
                 <div className="font-black text-amber-900">
                   Quiz Locked
                 </div>
@@ -1303,18 +1373,18 @@ export default function ManageQuiz() {
                   Workspace
                 </div>
 
-                <div className="mt-2 text-2xl md:text-3xl font-black tracking-tight text-slate-900">
+                <div className="manage-card-title font-black tracking-tight text-slate-900">
                   {activeTab ===
                   'questions'
                     ? 'Questions'
-                    : 'Schedule & Status'}
+                    : activeTab === 'groups' ? 'Student Groups' : activeTab === 'group-grading' ? 'Group Grading' : 'Schedule & Status'}
                 </div>
 
-                <div className="mt-2 text-sm text-slate-600">
+                <div className="manage-card-description text-slate-600">
                   {activeTab ===
                   'questions'
                     ? 'Create, edit, and review quiz items.'
-                    : 'Control quiz visibility and open/close times.'}
+                    : activeTab === 'groups' ? 'Create groups and assign students from this section.' : activeTab === 'group-grading' ? 'Apply one group result to every assigned member.' : 'Control quiz visibility and open/close times.'}
                 </div>
               </div>
 
@@ -1342,7 +1412,7 @@ export default function ManageQuiz() {
             </div>
           </div>
 
-          <div className="p-6 md:p-8">
+          <div className={`manage-body ${(activeTab === 'groups' || activeTab === 'group-grading') ? 'manage-body-groups' : ''}`}>
             {/* Questions tab */}
             {activeTab ===
               'questions' && (
@@ -1422,7 +1492,7 @@ export default function ManageQuiz() {
                               key={
                                 question.id
                               }
-                              className="p-5 hover:bg-slate-50 transition"
+                              className="manage-question-row hover:bg-slate-50 transition"
                             >
                               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                                 <div className="min-w-0">
@@ -1598,10 +1668,18 @@ export default function ManageQuiz() {
               </>
             )}
 
+            {isGroupActivity && <div hidden={activeTab !== 'groups'} className="manage-groups-tab">
+              <QuizGroupsPanel key={quizId} quizId={quizId} />
+            </div>}
+
+            {isGroupActivity && <div hidden={activeTab !== 'group-grading'} className="manage-groups-tab">
+              <QuizGroupGradingPanel key={quizId} quizId={quizId} active={activeTab === 'group-grading'} />
+            </div>}
+
             {/* Settings tab */}
             {activeTab ===
               'settings' && (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="manage-settings grid gap-3 md:grid-cols-2">
                 {/* Status */}
                 <div className="rounded-3xl border border-slate-200 bg-white p-6">
                   <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
@@ -1948,6 +2026,7 @@ export default function ManageQuiz() {
               </label>
 
               <select
+                disabled={isGroupActivity}
                 value={
                   newQuestion.question_type
                 }
@@ -1971,7 +2050,7 @@ export default function ManageQuiz() {
                       choices:
                         nextType ===
                         'MULTIPLE_CHOICE'
-                          ? createDefaultQuestion()
+                          ? createDefaultQuestion(isGroupActivity)
                               .choices
                           : nextType ===
                             'TRUE_FALSE'
@@ -1999,6 +2078,7 @@ export default function ManageQuiz() {
                 }}
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
               >
+                {!isGroupActivity && <>
                 <option value="MULTIPLE_CHOICE">
                   Multiple
                   Choice
@@ -2009,6 +2089,7 @@ export default function ManageQuiz() {
                   False
                 </option>
 
+                </>}
                 <option value="SHORT_ANSWER">
                   Identification
                   /
