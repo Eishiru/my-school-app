@@ -611,6 +611,10 @@ class QuizSerializer(serializers.ModelSerializer):
 class QuizCreateUpdateSerializer(serializers.ModelSerializer):
     semester = SemesterReferenceField(required=True)
     questions = QuizQuestionSerializer(many=True, write_only=True, required=False)
+    open_time = serializers.DateTimeField(required=False)
+    close_time = serializers.DateTimeField(required=False)
+    time_limit = serializers.IntegerField(required=False, default=60)
+    total_points = serializers.FloatField(required=False)
 
     class Meta:
         model = Quiz
@@ -621,7 +625,21 @@ class QuizCreateUpdateSerializer(serializers.ModelSerializer):
             'show_correct_answers', 'shuffle_questions', 'allow_multiple_attempts',
             'grade_type', 'questions'
         ]
-        read_only_fields = ['id', 'total_points']
+        read_only_fields = ['id']
+
+    def validate(self, data):
+        from django.utils import timezone
+        from datetime import timedelta
+        now = timezone.now()
+        if not data.get('open_time'):
+            data['open_time'] = now
+        if not data.get('close_time'):
+            data['close_time'] = now + timedelta(days=365)
+        if not data.get('time_limit'):
+            data['time_limit'] = 60
+        if not data.get('status'):
+            data['status'] = 'CLOSED'
+        return data
         
     def validate(self, attrs):
         from django.utils import timezone
@@ -645,7 +663,7 @@ class QuizCreateUpdateSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             raise serializers.ValidationError("Edit existing questions through the question endpoints.")
         if not questions:
-            raise serializers.ValidationError("Add at least one question.")
+            return questions
         for index, question in enumerate(questions, 1):
             prefix = f"Question {index}: "
             if not question.get("question_text", "").strip():
@@ -671,16 +689,22 @@ class QuizCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         from django.db import transaction
         questions = validated_data.pop("questions", [])
+        total_points_input = validated_data.pop("total_points", None)
         with transaction.atomic():
             quiz = super().create(validated_data)
-            for order, question_data in enumerate(questions):
-                question_data.pop("id", None)
-                question_data["order"] = order
-                for choice_order, choice in enumerate(question_data.get("choices", [])):
-                    choice.pop("id", None)
-                    choice["order"] = choice_order
-                QuizQuestionSerializer(context=self.context).create({**question_data, "quiz": quiz})
-            quiz.total_points = sum(question.get("points", 1) for question in questions)
+            if questions:
+                for order, question_data in enumerate(questions):
+                    question_data.pop("id", None)
+                    question_data["order"] = order
+                    for choice_order, choice in enumerate(question_data.get("choices", [])):
+                        choice.pop("id", None)
+                        choice["order"] = choice_order
+                    QuizQuestionSerializer(context=self.context).create({**question_data, "quiz": quiz})
+                quiz.total_points = sum(question.get("points", 1) for question in questions)
+            elif total_points_input is not None:
+                quiz.total_points = float(total_points_input)
+            else:
+                quiz.total_points = 100.0
             quiz.save(update_fields=["total_points"])
         return quiz
 

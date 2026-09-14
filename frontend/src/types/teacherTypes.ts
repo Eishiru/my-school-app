@@ -105,6 +105,8 @@ export type TeacherQuiz = {
   is_open: boolean;
   is_upcoming: boolean;
   is_closed: boolean;
+  grade_type?: "WRITTEN_WORK" | "PERFORMANCE_TASK" | "FINAL_EXAM";
+  semester?: Semester;
 };
 
 
@@ -292,6 +294,8 @@ export type CreateQuizPayload = {
 
   status: QuizStatus;
 
+  grade_type?: "WRITTEN_WORK" | "PERFORMANCE_TASK" | "FINAL_EXAM";
+
   show_correct_answers: boolean;
   shuffle_questions: boolean;
   allow_multiple_attempts: boolean;
@@ -453,4 +457,19 @@ export type SemesterSummaryRow = {
   semester_3: number | null;
 
   final: number | null;
+};
+
+export type BatchRecordQuizScoreItem = {
+  quiz_id: number;
+  student_id: number;
+  score: number | null;
+};
+
+export type BatchRecordQuizScoresPayload = {
+  updates: BatchRecordQuizScoreItem[];
+};
+
+export type BatchRecordQuizScoresResponse = {
+  status: string;
+  updated_count: number;
 };

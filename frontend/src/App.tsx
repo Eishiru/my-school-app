@@ -59,7 +59,7 @@ import SubjectFilesTab from './pages/teacher/subjects/SubjectFilesTab.tsx';
 import TeacherSubmissionsPage from './pages/teacher/submissions/TeacherSubmissionsPage.tsx';
 import TeacherSubjectSubmissionsPage from './pages/teacher/submissions/TeacherSubjectSubmissionPage.tsx';
 
-import SubjectGradeDetailPage from './pages/teacher/gradebook/SubjectQuarterlyGrades.tsx';
+import SubjectGradeDetailPage from './pages/teacher/gradebook/SubjectSemesterGrades.tsx';
 
 import InputReportCardData from './pages/teacher/advisoryClass/InputReportCardData.tsx';
 import SemesterGradesPage from './pages/teacher/gradebook/SemesterGradesPage.tsx';
@@ -141,8 +141,6 @@ function App() {
               <Route path="/teacher/activities/:id" element={<ManageQuiz />} />
               <Route path="/teacher/activities/:id/item-analysis" element={<QuizItemAnalysis />} />
               <Route path="/teacher/activities/:id/grading" element={<QuizGradingPage />} />
-              
-
             </Route>
 
             {/* Admin Domain */}
