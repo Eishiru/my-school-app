@@ -11,6 +11,8 @@ import {
   FolderOpen,
   CalendarClock,
   BarChart,
+  Award,
+  CheckCircle2,
   Eye,
   X,
 } from 'lucide-react';
@@ -20,6 +22,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useStudentSubject } from '../../../hooks/useStudentSubject';
 import { useStudentSubjectQuizzes } from '../../../hooks/useStudentSubjectQuizzes';
 import { useStudentSubjectFiles } from '../../../hooks/useStudentSubjectFiles';
+import { useStudentSubjectGrades, useStudentQuizAttempts } from '../../../hooks/useStudentSemesterGrades';
 
 import type { StudentQuiz } from '../../../types/studentTypes';
 
@@ -192,7 +195,7 @@ export default function StudentSubjectpage() {
   const navigate = useNavigate();
 
   const offeringId = Number(id || 0);
-  const [activeTab, setActiveTab] = useState<'activities' | 'files'>('activities');
+  const [activeTab, setActiveTab] = useState<'activities' | 'files' | 'grades'>('activities');
 
   const [preview, setPreview] = useState<{
     kind: "pdf" | "image";
@@ -221,17 +224,61 @@ export default function StudentSubjectpage() {
     isFetching: filesFetching,
   } = useStudentSubjectFiles(offeringId);
 
-  
+  const {
+    data: subjectGrades = [],
+    isLoading: gradesLoading,
+  } = useStudentSubjectGrades(offeringId);
+
+  const {
+    data: quizAttempts = [],
+  } = useStudentQuizAttempts();
+
+  const attemptsByQuizId = useMemo(() => {
+    const map = new Map<number, typeof quizAttempts[0]>();
+    for (const att of quizAttempts) {
+      map.set(att.quiz, att);
+    }
+    return map;
+  }, [quizAttempts]);
+
+  // Semester grade breakdown map (1, 2, 3)
+  const semesterBreakdown = useMemo(() => {
+    const map: Record<number, any> = {};
+    for (const g of subjectGrades) {
+      let semNum: number | null = null;
+      const semStr = String((g as any).semester?.name ?? (g as any).semester ?? '');
+      if (semStr.includes('1')) semNum = 1;
+      else if (semStr.includes('2')) semNum = 2;
+      else if (semStr.includes('3')) semNum = 3;
+      else if (g.quarter) semNum = g.quarter;
+
+      if (semNum && (!map[semNum] || g.final_grade !== null)) {
+        map[semNum] = g;
+      }
+    }
+    return map;
+  }, [subjectGrades]);
+
+  const computedFinalGrade = useMemo(() => {
+    const sem1 = semesterBreakdown[1]?.final_grade ?? offering?.semesters?.['SEMESTER_1'] ?? offering?.semesters?.['SEM1'];
+    const sem2 = semesterBreakdown[2]?.final_grade ?? offering?.semesters?.['SEMESTER_2'] ?? offering?.semesters?.['SEM2'];
+    const sem3 = semesterBreakdown[3]?.final_grade ?? offering?.semesters?.['SEMESTER_3'] ?? offering?.semesters?.['SEM3'];
+
+    const validSems = [sem1, sem2, sem3].filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+    if (validSems.length === 0) {
+      return typeof offering?.final_grade === 'number' ? offering.final_grade : null;
+    }
+    return Math.round((validSems.reduce((a, b) => a + b, 0) / validSems.length) * 100) / 100;
+  }, [semesterBreakdown, offering]);
 
   // files UI state
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'name'>('newest');
 
-
   const stats = useMemo(() => {
-    const grade = typeof offering?.final_grade === 'number' ? Math.round(offering.final_grade) : null;
+    const grade = computedFinalGrade !== null ? Math.round(computedFinalGrade) : (typeof offering?.final_grade === 'number' ? Math.round(offering.final_grade) : null);
     return { grade, activityCount: quizzes.length, fileCount: files.length };
-  }, [offering, quizzes, files]);
+  }, [computedFinalGrade, offering, quizzes, files]);
 
   // Sort quizzes: OPEN first → SCHEDULED → CLOSED → DRAFT
   const sortedQuizzes = useMemo(() => {
@@ -427,15 +474,19 @@ export default function StudentSubjectpage() {
                 active={activeTab === 'activities'}
                 icon={<Layers size={16} />}
                 label="Activities"
-                
                 onClick={() => setActiveTab('activities')}
               />
               <TabButton
                 active={activeTab === 'files'}
                 icon={<FolderOpen size={16} />}
                 label="Files"
-                
                 onClick={() => setActiveTab('files')}
+              />
+              <TabButton
+                active={activeTab === 'grades'}
+                icon={<Award size={16} />}
+                label="Grades"
+                onClick={() => setActiveTab('grades')}
               />
             </div>
           </div>
@@ -455,6 +506,12 @@ export default function StudentSubjectpage() {
               label="Files"
               count={stats.fileCount}
               onClick={() => setActiveTab('files')}
+            />
+            <TabButton
+              active={activeTab === 'grades'}
+              icon={<Award size={16} />}
+              label="Grades"
+              onClick={() => setActiveTab('grades')}
             />
           </div>
         </div>
@@ -495,12 +552,14 @@ export default function StudentSubjectpage() {
               <div className="min-w-0">
                 <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Subject Workspace</div>
                 <div className="mt-2 text-2xl md:text-3xl font-black tracking-tight text-slate-900">
-                  {activeTab === 'activities' ? 'Activities' : 'Files'}
+                  {activeTab === 'activities' ? 'Activities' : activeTab === 'files' ? 'Files' : 'Grade Breakdown'}
                 </div>
                 <div className="mt-2 text-sm text-slate-600">
                   {activeTab === 'activities'
                     ? 'Start open quizzes and check upcoming schedules.'
-                    : 'Browse handouts, modules, and shared materials.'}
+                    : activeTab === 'files'
+                    ? 'Browse handouts, modules, and shared materials.'
+                    : 'View your 3-semester scores and DepEd assessment component breakdown.'}
                 </div>
               </div>
 
@@ -555,7 +614,9 @@ export default function StudentSubjectpage() {
                           <tbody className="divide-y divide-slate-100">
                             {sortedQuizzes.map((qq) => {
                               const status = getQuizStatus(qq);
-                              const canStart = status === 'OPEN';
+                              const attempt = attemptsByQuizId.get(qq.id);
+                              const isCompleted = !!attempt && (attempt.status === 'SUBMITTED' || attempt.status === 'GRADED' || (attempt.score !== null && attempt.score !== undefined));
+                              const canStart = !isCompleted && status === 'OPEN';
                               const meta = statusMeta(status);
 
                               return (
@@ -573,15 +634,31 @@ export default function StudentSubjectpage() {
                                   <td className="py-5 px-5 text-sm text-slate-600">{formatDateTime(qq.open_time)}</td>
                                   <td className="py-5 px-5 text-sm text-slate-600">{formatDateTime(qq.close_time)}</td>
                                   <td className="py-5 px-5">
-                                    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${meta.chip}`}>
-                                      <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-                                      {meta.label}
-                                    </span>
+                                    {isCompleted ? (
+                                      <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-black bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                                        <CheckCircle2 size={12} className="text-emerald-600" />
+                                        COMPLETED
+                                      </span>
+                                    ) : (
+                                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${meta.chip}`}>
+                                        <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                                        {meta.label}
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="py-5 px-5 text-right">
-                                    {canStart ? (
+                                    {isCompleted ? (
+                                      <div className="inline-flex flex-col items-end">
+                                        <span className="text-xs font-black text-slate-900">
+                                          Score: {attempt?.score ?? 0} / {attempt?.total ?? qq.total_points ?? 0}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-emerald-600">
+                                          {Math.round(attempt?.percentage ?? 0)}%
+                                        </span>
+                                      </div>
+                                    ) : canStart ? (
                                       <Link
-                                        to={`/student/activities/`}
+                                        to={`/student/activities/${qq.id}/take`}
                                         className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-600 transition"
                                       >
                                         <PlayCircle className="h-4 w-4" />
@@ -609,7 +686,9 @@ export default function StudentSubjectpage() {
                     <div className="md:hidden p-3 space-y-3">
                       {sortedQuizzes.map((qq) => {
                         const status = getQuizStatus(qq);
-                        const canStart = status === 'OPEN';
+                        const attempt = attemptsByQuizId.get(qq.id);
+                        const isCompleted = !!attempt && (attempt.status === 'SUBMITTED' || attempt.status === 'GRADED' || (attempt.score !== null && attempt.score !== undefined));
+                        const canStart = !isCompleted && status === 'OPEN';
                         const meta = statusMeta(status);
 
                         return (
@@ -624,14 +703,30 @@ export default function StudentSubjectpage() {
                                   {qq.time_limit ? `Time limit: ${qq.time_limit} min` : 'No time limit'}
                                 </div>
                               </div>
-                              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${meta.chip}`}>
-                                <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-                                {meta.label}
-                              </span>
+                              {isCompleted ? (
+                                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-black bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                                  <CheckCircle2 size={12} className="text-emerald-600" />
+                                  COMPLETED
+                                </span>
+                              ) : (
+                                <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${meta.chip}`}>
+                                  <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                                  {meta.label}
+                                </span>
+                              )}
                             </div>
 
                             <div className="mt-3">
-                              {canStart ? (
+                              {isCompleted ? (
+                                <div className="w-full flex items-center justify-between rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+                                  <span className="text-xs font-black text-emerald-800 flex items-center gap-1.5">
+                                    <CheckCircle2 size={14} /> Completed
+                                  </span>
+                                  <span className="text-xs font-black text-emerald-900">
+                                    Score: {attempt?.score ?? 0} / {attempt?.total ?? qq.total_points ?? 0} ({Math.round(attempt?.percentage ?? 0)}%)
+                                  </span>
+                                </div>
+                              ) : canStart ? (
                                 <Link
                                   to={`/student/activities/${qq.id}/take`}
                                   className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-600 transition"
@@ -788,6 +883,173 @@ export default function StudentSubjectpage() {
                 <div className="mt-4 text-xs text-slate-500">
                   Tip: Use <span className="font-black text-slate-900">Preview</span> for PDFs/images, or{' '}
                   <span className="font-black text-slate-900">Open</span> to download.
+                </div>
+              </div>
+            )}
+
+            {/* GRADES */}
+            {activeTab === 'grades' && (
+              <div className="space-y-6">
+                {/* 3 Semesters + Final Grade Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[1, 2, 3].map((sNum) => {
+                    const semGradeRec = semesterBreakdown[sNum];
+                    const semVal = semGradeRec?.final_grade ?? offering?.semesters?.[`SEMESTER_${sNum}`] ?? offering?.semesters?.[`SEM${sNum}`];
+                    const hasVal = typeof semVal === 'number' && !Number.isNaN(semVal);
+
+                    return (
+                      <div key={sNum} className="rounded-3xl border border-slate-200 bg-slate-50/50 p-5">
+                        <div className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+                          Semester {sNum}
+                        </div>
+                        <div className="mt-3 flex items-baseline gap-2">
+                          <span className="text-3xl font-black text-slate-900">
+                            {hasVal ? semVal.toFixed(1) : '—'}
+                          </span>
+                          {hasVal && <span className="text-xs font-bold text-slate-400">/ 100</span>}
+                        </div>
+                        <div className="mt-2 text-xs">
+                          {hasVal ? (
+                            semVal >= 75 ? (
+                              <span className="font-bold text-emerald-600">Passed</span>
+                            ) : (
+                              <span className="font-bold text-rose-600">Needs Attention</span>
+                            )
+                          ) : (
+                            <span className="text-slate-400">Not recorded yet</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Overall Final Grade */}
+                  <div className="rounded-3xl border border-indigo-200 bg-indigo-50/40 p-5">
+                    <div className="text-[11px] font-black uppercase tracking-widest text-indigo-500">
+                      Final Grade
+                    </div>
+                    <div className="mt-3 flex items-baseline gap-2">
+                      <span className="text-3xl font-black text-indigo-950">
+                        {computedFinalGrade !== null ? computedFinalGrade.toFixed(1) : '—'}
+                      </span>
+                      {computedFinalGrade !== null && <span className="text-xs font-bold text-indigo-400">/ 100</span>}
+                    </div>
+                    <div className="mt-2 text-xs">
+                      {computedFinalGrade !== null ? (
+                        computedFinalGrade >= 75 ? (
+                          <span className="font-black text-emerald-600">Passed Subject</span>
+                        ) : (
+                          <span className="font-black text-rose-600">Failed</span>
+                        )
+                      ) : (
+                        <span className="text-slate-400">Awaiting semesters</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Component Breakdown per semester */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">
+                    Assessment Components Breakdown
+                  </h3>
+
+                  {subjectGrades.length === 0 ? (
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 text-center">
+                      <p className="text-sm font-bold text-slate-600">
+                        No detailed assessment grade components recorded by your instructor for this subject offering yet.
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Scores for Written Works, Performance Tasks, and Semester Assessments will appear here once submitted and graded.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {[1, 2, 3].map((sNum) => {
+                        const gradeRec = semesterBreakdown[sNum];
+                        if (!gradeRec) return null;
+
+                        const wwScore = gradeRec.written_work_score ?? 0;
+                        const wwTotal = gradeRec.written_work_total ?? 0;
+                        const wwWeight = gradeRec.ww_weight ? gradeRec.ww_weight * 100 : 30;
+
+                        const ptScore = gradeRec.performance_task_score ?? 0;
+                        const ptTotal = gradeRec.performance_task_total ?? 0;
+                        const ptWeight = gradeRec.pt_weight ? gradeRec.pt_weight * 100 : 50;
+
+                        const saScore = gradeRec.semester_assessment_score ?? gradeRec.quarterly_assessment_score ?? 0;
+                        const saTotal = gradeRec.semester_assessment_total ?? gradeRec.quarterly_assessment_total ?? 0;
+                        const saWeight = (gradeRec.sa_weight ?? gradeRec.qa_weight) ? (gradeRec.sa_weight ?? gradeRec.qa_weight) * 100 : 20;
+
+                        return (
+                          <div key={sNum} className="rounded-3xl border border-slate-200 overflow-hidden">
+                            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                              <div>
+                                <h4 className="font-black text-slate-900">Semester {sNum} Breakdown</h4>
+                                <p className="text-xs text-slate-500">DepEd Standard Grading Components</p>
+                              </div>
+                              {gradeRec.final_grade !== null && (
+                                <span
+                                  className={`px-3 py-1 rounded-xl text-xs font-black ${
+                                    gradeRec.final_grade >= 75
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-rose-100 text-rose-800'
+                                  }`}
+                                >
+                                  Grade: {gradeRec.final_grade} ({gradeRec.remarks || (gradeRec.final_grade >= 75 ? 'Passed' : 'Failed')})
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left">
+                                <thead>
+                                  <tr className="border-b border-slate-100 text-[11px] font-black uppercase tracking-wider text-slate-400">
+                                    <th className="py-3 px-6">Component</th>
+                                    <th className="py-3 px-6">Weight</th>
+                                    <th className="py-3 px-6">Total Raw Score</th>
+                                    <th className="py-3 px-6">Percentage Score</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-sm">
+                                  <tr>
+                                    <td className="py-4 px-6 font-black text-slate-900">Written Works (WW)</td>
+                                    <td className="py-4 px-6 font-bold text-slate-600">{wwWeight}%</td>
+                                    <td className="py-4 px-6 text-slate-700">
+                                      {wwScore} / {wwTotal}
+                                    </td>
+                                    <td className="py-4 px-6 font-bold text-slate-900">
+                                      {wwTotal > 0 ? `${((wwScore / wwTotal) * 100).toFixed(1)}%` : '—'}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td className="py-4 px-6 font-black text-slate-900">Performance Tasks (PT)</td>
+                                    <td className="py-4 px-6 font-bold text-slate-600">{ptWeight}%</td>
+                                    <td className="py-4 px-6 text-slate-700">
+                                      {ptScore} / {ptTotal}
+                                    </td>
+                                    <td className="py-4 px-6 font-bold text-slate-900">
+                                      {ptTotal > 0 ? `${((ptScore / ptTotal) * 100).toFixed(1)}%` : '—'}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td className="py-4 px-6 font-black text-slate-900">Semester Assessment (SA)</td>
+                                    <td className="py-4 px-6 font-bold text-slate-600">{saWeight}%</td>
+                                    <td className="py-4 px-6 text-slate-700">
+                                      {saScore} / {saTotal}
+                                    </td>
+                                    <td className="py-4 px-6 font-bold text-slate-900">
+                                      {saTotal > 0 ? `${((saScore / saTotal) * 100).toFixed(1)}%` : '—'}
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

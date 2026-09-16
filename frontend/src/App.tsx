@@ -27,7 +27,6 @@ import { StudentAccountsPage} from './pages/admin/students/StudentsPage.tsx';
 import GradeLogs from './pages/admin/gradelogs/GradeLogs.tsx';
 import AccountListPage from './pages/admin/accounts/Account-list.tsx';
 import CreateSectionPage from './pages/admin/students/create-subject.tsx';
-import QuarterlyGradesPage from './pages/teacher/gradebook/SemesterGradesPage.tsx';
 import ExportReportCardPDF from './pages/teacher/advisoryClass/ExportReportCard.tsx';
 
 // import SubjectPage from './pages/teacher/subjects/SubjectPage.tsx';
@@ -50,7 +49,7 @@ import StudentQuizList from './pages/student/quiz/StudentQuizList.tsx';
 import TakeQuiz from './pages/student/quiz/TakeQuiz.tsx';
 import QuizResult from './pages/student/quiz/QuizResult.tsx';
 import StudentGradeForecast from './pages/student/gradeForecast/StudentGradeForecast.tsx';
-import StudentQuarterlyGrades from './pages/student/grades/StudentQuarterlyGrades.tsx';
+import StudentSemesterGrades from './pages/student/grades/StudentSemesterGrades.tsx';
 import SubjectLayout from './pages/teacher/subjects/SubjectLayout.tsx';
 import SubjectClassListTab from './pages/teacher/subjects/SubjectClassListTab.tsx';
 import SubjectGradesTab from './pages/teacher/subjects/SubjectGradesTab.tsx';
@@ -92,7 +91,9 @@ function App() {
               <Route path="/student/subject" element={<SubjectsPage />} />
               <Route path="/student/subject-offering/:id" element={<StudentSubjectpage />} />
              
-              <Route path="/student/grades/quarterly" element={<StudentQuarterlyGrades />} />
+              <Route path="/student/report-card" element={<StudentSemesterGrades />} />
+              <Route path="/student/grades/quarterly" element={<Navigate to="/student/report-card" replace />} />
+              <Route path="/student/grades/semester" element={<Navigate to="/student/report-card" replace />} />
               <Route path="/student/activities" element={<StudentQuizList />} />
               <Route path="/student/activities/:id/take" element={<TakeQuiz />} />
               <Route path="/student/activities/result" element={<QuizResult />} />

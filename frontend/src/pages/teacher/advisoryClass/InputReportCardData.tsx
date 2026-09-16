@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Save, ArrowLeft, Calendar, Heart, User, GraduationCap } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Download, ArrowLeft, Calendar, Heart, User, GraduationCap, Eye } from "lucide-react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useStudentDetail } from "../../../hooks/useTeacherSubjects";
+import { generateSF9PDF } from "./ExportReportCard";
 
 type AttendanceState = {
     schoolDays: number[];
@@ -9,16 +12,22 @@ type AttendanceState = {
 };
 
 type ObservedValuesState = {
-    [quarter: string]: Record<string, string[]>;
+    [semester: string]: Record<string, string[]>;
 };
 
 export default function InputReportCardData() {
     const navigate = useNavigate();
     const location = useLocation();
     const { studentId } = useParams<{ studentId: string }>();
+    const sid = Number(studentId) || 0;
+    const queryClient = useQueryClient();
+
+    const { data: studentDetail } = useStudentDetail(sid, sid > 0);
     
     const [loading, setLoading] = useState(false);
-    const [activeQuarter, setActiveQuarter] = useState<string>("Q1");
+    const [downloading, setDownloading] = useState(false);
+    const SEMESTERS = ["Semester 1", "Semester 2", "Semester 3"];
+    const [activeSemester, setActiveSemester] = useState<string>("Semester 1");
     const passedStudent = (location.state as any)?.student || null;
 
     const [schoolYear, setSchoolYear] = useState("2025-2026");
@@ -37,26 +46,41 @@ export default function InputReportCardData() {
 
     const [observedValues, setObservedValues] = useState<ObservedValuesState>(() => {
         const initialState: ObservedValuesState = {};
-        ["Q1", "Q2", "Q3", "Q4"].forEach((q) => {
-            initialState[q] = Object.fromEntries(CORE_VALUES_DATA.map(c => [c.value, c.statements.map(() => "")]));
+        SEMESTERS.forEach((sem) => {
+            initialState[sem] = Object.fromEntries(CORE_VALUES_DATA.map(c => [c.value, c.statements.map(() => "")]));
         });
         return initialState;
     });
 
     const [attendance, setAttendance] = useState<AttendanceState>({
-        schoolDays: Array(12).fill(20),
+        schoolDays: Array(12).fill(0),
         present: Array(12).fill(0),
-        absent: Array(12).fill(20),
+        absent: Array(12).fill(0),
     });
 
     useEffect(() => {
-        if (!passedStudent) return;
-        setName(passedStudent.name || "");
-        setSection(passedStudent.section || "");
-        setLrn(passedStudent.lrn || "");
-        setAge(passedStudent.age ?? "");
-        setSex(passedStudent.sex || "");
+        if (passedStudent) {
+            setName(passedStudent.name || "");
+            setSection(passedStudent.section || passedStudent.Section || "");
+            setLrn(passedStudent.lrn || "");
+            setAge(passedStudent.age ?? "");
+            setSex(passedStudent.sex || "");
+        }
     }, [passedStudent]);
+
+    useEffect(() => {
+        if (studentDetail) {
+            setName(prev => prev || `${studentDetail.first_name || ""} ${studentDetail.last_name || ""}`.trim());
+            setLrn(prev => prev || studentDetail.school_id || "");
+            setSection(prev => prev || studentDetail.section_name || "");
+            if (studentDetail.age != null) {
+                setAge(prev => (prev !== "" ? prev : Number(studentDetail.age)));
+            }
+            if (studentDetail.sex) {
+                setSex(prev => prev || studentDetail.sex!);
+            }
+        }
+    }, [studentDetail]);
 
     const months = ["AUG", "SEPT", "OCT", "NOV", "DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JULY"];
     const totalSchoolDays = attendance.schoolDays.reduce((a, b) => a + b, 0);
@@ -65,26 +89,51 @@ export default function InputReportCardData() {
     const handleValueChange = (category: string, index: number, val: string) => {
         setObservedValues(prev => ({
             ...prev,
-            [activeQuarter]: {
-                ...prev[activeQuarter],
-                [category]: prev[activeQuarter][category].map((v, i) => (i === index ? val : v)),
+            [activeSemester]: {
+                ...prev[activeSemester],
+                [category]: prev[activeSemester][category].map((v, i) => (i === index ? val : v)),
             }
         }));
     };
 
     const handleAttendanceChange = (type: 'schoolDays' | 'present', index: number, val: string) => {
-        const num = Math.max(0, Number(val));
+        const num = val === "" ? 0 : Math.max(0, Number(val));
         setAttendance(prev => {
-            const newState = { ...prev };
+            const newState = {
+                schoolDays: [...prev.schoolDays],
+                present: [...prev.present],
+                absent: [...prev.absent],
+            };
             newState[type][index] = num;
             if (type === 'schoolDays') {
                 newState.present[index] = Math.min(newState.present[index], num);
             } else {
                 newState.present[index] = Math.min(num, newState.schoolDays[index]);
             }
-            newState.absent[index] = newState.schoolDays[index] - newState.present[index];
-            return { ...newState };
+            newState.absent[index] = Math.max(0, newState.schoolDays[index] - newState.present[index]);
+            return newState;
         });
+    };
+
+    const handleDirectDownload = async () => {
+        setDownloading(true);
+        try {
+            const token = localStorage.getItem("access");
+            await generateSF9PDF({
+                studentId: studentId!,
+                studentInfo: { name, age, section, sex, lrn, schoolYear },
+                attendance,
+                observedValues,
+                token,
+                studentDetail,
+                queryClient,
+            });
+        } catch (err) {
+            console.error("Failed to generate PDF:", err);
+            alert("Error downloading report card. Please try again.");
+        } finally {
+            setDownloading(false);
+        }
     };
 
     const saveToBackend = async () => {
@@ -93,10 +142,8 @@ export default function InputReportCardData() {
         setTimeout(() => {
             setLoading(false);
             navigate(`/teacher/advisory-class/report-card/${studentId}/sf9`, { state: payload });
-        }, 500);
+        }, 200);
     };
-    
-    const isFormValid = name.trim() !== "" && lrn.trim() !== "" && age !== "" && sex !== "" && section.trim() !== "" && schoolYear.trim() !== "";
 
     return (
         <div className="max-w-7xl mx-auto p-6 bg-slate-50 min-h-screen space-y-8">
@@ -106,19 +153,27 @@ export default function InputReportCardData() {
                     <ArrowLeft size={16} /> Back to Masterlist
                 </button>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <div className="bg-white border rounded-xl px-4 py-2 flex items-center gap-3 shadow-sm">
                         <GraduationCap size={16} className="text-indigo-500" />
                         <span className="text-[10px] font-black text-slate-400 uppercase">S.Y.</span>
                         <input type="text" value={schoolYear} onChange={(e) => setSchoolYear(e.target.value)} className="w-20 text-xs font-bold focus:outline-none" />
                     </div>
                     <button
-                        onClick={saveToBackend}
-                        disabled={loading || !isFormValid}
-                        className={`px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-lg flex items-center gap-2
-                            ${loading || !isFormValid ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-slate-900 text-white hover:bg-indigo-600 active:scale-95"}`}
+                        type="button"
+                        onClick={handleDirectDownload}
+                        disabled={downloading}
+                        className="px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-lg flex items-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 disabled:opacity-50 cursor-pointer"
                     >
-                        <Save size={16} /> {loading ? "Syncing..." : "Process Report Card"}
+                        <Download size={16} /> {downloading ? "Generating PDF..." : "Download SF9 (PDF)"}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={saveToBackend}
+                        disabled={loading}
+                        className="px-5 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all shadow-md flex items-center gap-2 bg-slate-900 text-white hover:bg-slate-800 active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                        <Eye size={16} /> {loading ? "Opening..." : "Preview SF9"}
                     </button>
                 </div>
             </div>
@@ -187,13 +242,13 @@ export default function InputReportCardData() {
                                 <tr>
                                     <td className="text-xs font-black text-slate-500 uppercase py-2">School Days</td>
                                     {months.map((_, i) => (
-                                        <td key={i}><input type="number" className="w-14 h-10 bg-slate-50 border-none rounded-xl text-center font-bold text-xs focus:ring-2 focus:ring-indigo-500" value={attendance.schoolDays[i]} onChange={e => handleAttendanceChange('schoolDays', i, e.target.value)} /></td>
+                                        <td key={i}><input type="number" min="0" placeholder="0" className="w-14 h-10 bg-slate-50 border-none rounded-xl text-center font-bold text-xs focus:ring-2 focus:ring-indigo-500" value={attendance.schoolDays[i] === 0 ? "" : attendance.schoolDays[i]} onChange={e => handleAttendanceChange('schoolDays', i, e.target.value)} /></td>
                                     ))}
                                 </tr>
                                 <tr>
                                     <td className="text-xs font-black text-slate-500 uppercase py-2">Present</td>
                                     {months.map((_, i) => (
-                                        <td key={i}><input type="number" className="w-14 h-10 bg-indigo-50/50 text-indigo-600 border-none rounded-xl text-center font-bold text-xs focus:ring-2 focus:ring-indigo-500" value={attendance.present[i]} onChange={e => handleAttendanceChange('present', i, e.target.value)} /></td>
+                                        <td key={i}><input type="number" min="0" placeholder="0" className="w-14 h-10 bg-indigo-50/50 text-indigo-600 border-none rounded-xl text-center font-bold text-xs focus:ring-2 focus:ring-indigo-500" value={attendance.present[i] === 0 ? "" : attendance.present[i]} onChange={e => handleAttendanceChange('present', i, e.target.value)} /></td>
                                     ))}
                                 </tr>
                             </tbody>
@@ -208,9 +263,9 @@ export default function InputReportCardData() {
                             <Heart size={14} className="text-rose-500" /> Observed Values
                         </h2>
                         <div className="flex bg-slate-100 p-1 rounded-xl">
-                            {["Q1", "Q2", "Q3", "Q4"].map((q) => (
-                                <button key={q} onClick={() => setActiveQuarter(q)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${activeQuarter === q ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
-                                    {q}
+                            {SEMESTERS.map((sem) => (
+                                <button key={sem} onClick={() => setActiveSemester(sem)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${activeSemester === sem ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
+                                    {sem}
                                 </button>
                             ))}
                         </div>
@@ -224,7 +279,7 @@ export default function InputReportCardData() {
                                     <div key={i} className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
                                         <p className="text-xs text-slate-600 font-semibold mb-3 leading-relaxed">{statement}</p>
                                         <select
-                                            value={observedValues[activeQuarter][core.value][i]}
+                                            value={observedValues[activeSemester]?.[core.value]?.[i] || ""}
                                             onChange={(e) => handleValueChange(core.value, i, e.target.value)}
                                             className="w-full bg-white border-none rounded-xl text-[11px] font-black uppercase p-2.5 shadow-sm focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                                         >

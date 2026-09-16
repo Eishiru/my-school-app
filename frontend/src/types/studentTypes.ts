@@ -23,7 +23,8 @@ export interface StudentSubjectOffering {
 
   progress: number;
   average: number;
-  quarters: Record<string, number>;
+  quarters?: Record<string, number>;
+  semesters?: Record<string, number>;
   final_grade: number | null;
 }
 
@@ -139,4 +140,55 @@ export interface StudentSemesterGradeReport {
 
   semester_average: number | null;
   result: "PASSED" | "FAILED" | "INCOMPLETE";
+}
+
+export interface StudentSemesterGradeRow {
+  subject_offering_id: number;
+  subject: string;
+  teacher_name?: string;
+  sem1?: number | null;
+  sem2?: number | null;
+  sem3?: number | null;
+  semester_1?: number | null;
+  semester_2?: number | null;
+  semester_3?: number | null;
+  final: number | null;
+}
+
+export interface StudentQuizAttempt {
+  id: number;
+  quiz: number;
+  quiz_title?: string;
+  subject_name?: string;
+  score: number | null;
+  total: number | null;
+  percentage: number | null;
+  status: "IN_PROGRESS" | "SUBMITTED" | "GRADED" | "EXPIRED";
+  started_at?: string;
+  submitted_at?: string;
+}
+
+export interface StudentSubjectQuarterlyGrade {
+  id: number;
+  quarter?: number | null;
+  semester?: {
+    id: number;
+    name: string;
+    school_year?: number;
+  } | null;
+  semester_id?: number | null;
+  written_work_score: number;
+  written_work_total: number;
+  performance_task_score: number;
+  performance_task_total: number;
+  semester_assessment_score?: number;
+  semester_assessment_total?: number;
+  quarterly_assessment_score?: number;
+  quarterly_assessment_total?: number;
+  ww_weight: number;
+  pt_weight: number;
+  sa_weight?: number;
+  qa_weight?: number;
+  final_grade: number | null;
+  remarks: string | null;
 }
