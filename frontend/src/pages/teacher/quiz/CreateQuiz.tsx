@@ -67,7 +67,6 @@ type CreateQuizForm = {
   title: string;
   description: string;
   activity_mode: "INDIVIDUAL" | "GROUP";
-  grade_type: "WRITTEN_WORK" | "PERFORMANCE_TASK";
 
   open_time: string;
   close_time: string;
@@ -185,7 +184,6 @@ export default function CreateQuiz() {
       status:
         "SCHEDULED",
 
-      grade_type: initialGradeType,
 
       show_correct_answers:
         false,
@@ -837,6 +835,7 @@ export default function CreateQuiz() {
             >
               <option value="WRITTEN_WORK">Written Works</option>
               <option value="PERFORMANCE_TASK">Performance Task</option>
+              <option value="FINAL_EXAM">Final Exam / Assessment</option>
             </select>
           </label>
         </div>
@@ -977,28 +976,6 @@ export default function CreateQuiz() {
               <option value="SEMESTER_3">
                 3rd Semester
               </option>
-            </select>
-          </div>
-
-          {/* Activity Category / Grade Type */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">
-              Grading Category
-            </label>
-
-            <select
-              value={formData.grade_type}
-              onChange={(event) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  grade_type: event.target.value as "WRITTEN_WORK" | "PERFORMANCE_TASK" | "FINAL_EXAM",
-                }))
-              }
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-            >
-              <option value="WRITTEN_WORK">Written Work (WW)</option>
-              <option value="PERFORMANCE_TASK">Performance Task (PT)</option>
-              <option value="FINAL_EXAM">Final Exam / Assessment</option>
             </select>
           </div>
 
