@@ -448,6 +448,19 @@ export type AdvisoryStudent = {
   section: number | null;
 };
 
+export type StudentDetail = {
+  id: number;
+  school_id: string;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  sex?: string;
+  age?: number | null;
+  grade_level?: string | number;
+  section_name?: string;
+  section?: number | null;
+};
+
 export type SemesterSummaryRow = {
   subject_offering_id: number;
   subject: string;

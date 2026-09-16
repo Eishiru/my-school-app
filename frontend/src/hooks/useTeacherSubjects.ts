@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addQuizQuestion, applySemesterWeights, batchRecordQuizScores, createTeacherQuiz, deleteQuizQuestion, deleteSemesterGrade, deleteSubjectFile, deleteTeacherQuiz, deleteTeacherQuizActivity, deleteTeacherSubject, generateQuizAIAnalysis, getAdvisoryStudents, getQuizItemAnalysis, getQuizQuestions, getQuizStudentSubmissions, getRecentQuizGrades, getSemesterGrades, getStudentSemesterSummary, getSubjectFiles, getTeacherAdvisoryDetail, getTeacherQuiz, getTeacherQuizAttempts, getTeacherQuizzes, getTeacherSubject, getTeacherSubjectActivities, getTeacherSubjectGrades, getTeacherSubjectQuizzes, getTeacherSubjects, getTeacherSubjectStudents, getTeacherSubjectSubmissionDetail, getTeacherSubmissionsSummary, gradeQuizAnswer, saveSemesterGrade, updateQuizQuestion, updateQuizStatus, updateQuizTimes, uploadSubjectFile } from "../api/teacherApi";
+import { addQuizQuestion, applySemesterWeights, batchRecordQuizScores, createTeacherQuiz, deleteQuizQuestion, deleteSemesterGrade, deleteSubjectFile, deleteTeacherQuiz, deleteTeacherQuizActivity, deleteTeacherSubject, generateQuizAIAnalysis, getAdvisoryStudents, getQuizItemAnalysis, getQuizQuestions, getQuizStudentSubmissions, getRecentQuizGrades, getSemesterGrades, getStudentDetail, getStudentSemesterSummary, getSubjectFiles, getTeacherAdvisoryDetail, getTeacherQuiz, getTeacherQuizAttempts, getTeacherQuizzes, getTeacherSubject, getTeacherSubjectActivities, getTeacherSubjectGrades, getTeacherSubjectQuizzes, getTeacherSubjects, getTeacherSubjectStudents, getTeacherSubjectSubmissionDetail, getTeacherSubmissionsSummary, gradeQuizAnswer, saveSemesterGrade, updateQuizQuestion, updateQuizStatus, updateQuizTimes, uploadSubjectFile } from "../api/teacherApi";
 import { Semester, TeacherQuiz } from "../types/teacherTypes";
 
 export function useTeacherSubjects() {
@@ -794,4 +794,29 @@ export function useStudentSemesterSummary(
     staleTime:
       5 * 60 * 1000,
   });
-}       
+}
+
+export function useStudentDetail(
+  studentId: number,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: [
+      "student",
+      "detail",
+      studentId,
+    ],
+
+    queryFn: () =>
+      getStudentDetail(
+        studentId
+      ),
+
+    enabled:
+      enabled &&
+      studentId > 0,
+
+    staleTime:
+      5 * 60 * 1000,
+  });
+}

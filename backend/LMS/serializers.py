@@ -17,6 +17,7 @@ class StudentSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source="user.first_name", read_only=True)
     last_name = serializers.CharField(source="user.last_name", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
+    section_name = serializers.CharField(source="section.section", read_only=True, default="")
 
     section = serializers.PrimaryKeyRelatedField(
         queryset=Section.objects.all(),
@@ -34,6 +35,7 @@ class StudentSerializer(serializers.ModelSerializer):
             "email",
             "grade_level",
             "section",
+            "section_name",
         ]
 
 class TeacherProfileSerializer(serializers.ModelSerializer):

@@ -2,7 +2,10 @@ import type {
     StudentProfile, 
     StudentSubjectOffering, 
     StudentQuiz,
-    StudentSubjectFile
+    StudentSubjectFile,
+    StudentSemesterGradeRow,
+    StudentSubjectQuarterlyGrade,
+    StudentQuizAttempt
 } from "../types/studentTypes";
 import { authFetch } from "./apiClient";
 
@@ -68,4 +71,59 @@ export async function getStudentSubjectFiles(
   );
 
   return response.json();
+}
+
+export async function getStudentSemesterSummary(
+  studentId?: number | string
+): Promise<StudentSemesterGradeRow[]> {
+  const url = studentId
+    ? `/students/${studentId}/semester-summary/`
+    : "/students/my-semester-summary/";
+  const response = await authFetch(url, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch student semester summary: ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getStudentSubjectGrades(
+  offeringId: number
+): Promise<StudentSubjectQuarterlyGrade[]> {
+  const response = await authFetch(
+    `/student/subject-offerings/${offeringId}/my-grades/`,
+    {
+      method: "GET",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch subject grades: ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getStudentQuizAttempts(): Promise<StudentQuizAttempt[]> {
+  const response = await authFetch("/student/quiz-attempts/", {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch quiz attempts: ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
 }

@@ -1,6 +1,7 @@
 import { useStudentProfile } from '../../../hooks/useStudentProfile';
 import { useStudentSubjects } from '../../../hooks/useStudentSubjects';
 import { useStudentQuizzes } from '../../../hooks/useStudentQuizzes';
+import { useStudentQuizAttempts } from '../../../hooks/useStudentSemesterGrades';
 import type { StudentQuiz, QuizStatus } from '../../../types/studentTypes';
 
 import StatCard from '../../../components/studentcomponents/StatCard'
@@ -10,10 +11,20 @@ import { Link } from 'react-router-dom';
 import {
   Clock,
   ChevronRight,
+  BookOpen,
+  CheckCircle2,
+  Award,
 } from 'lucide-react';
 
 
 // ---------------- Helpers ----------------
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning,';
+  if (hour < 18) return 'Good afternoon,';
+  return 'Good evening,';
+}
 
 function safeNumber(v: any, fallback = 0) {
   const n = typeof v === 'number' ? v : Number(v);
@@ -87,24 +98,42 @@ export default function StudentDashboard() {
     data: offerings = [],
     isLoading: subjectsLoading,
     error: subjectsError,
-
   } = useStudentSubjects();
 
-    const {
+  const {
     data: quizzes = [],
     isLoading: quizzesLoading,
     error: quizzesError,
-
   } = useStudentQuizzes();
+
+  const {
+    data: quizAttempts = [],
+  } = useStudentQuizAttempts();
 
   const [selectedSemester, setSelectedSemester] = useState(1);
 
+  const attemptsByQuizId = useMemo(() => {
+    const map = new Map<number, typeof quizAttempts[0]>();
+    for (const att of quizAttempts) {
+      map.set(att.quiz, att);
+    }
+    return map;
+  }, [quizAttempts]);
+
+  const getSubjectSemesterGrade = (o: any, sem: number): number | null => {
+    const semKey = `SEMESTER_${sem}`;
+    const altKey = `SEM${sem}`;
+    const val = o.semesters?.[semKey] ?? o.semesters?.[altKey] ?? (o.quarters as any)?.[sem];
+    if (typeof val === 'number' && !Number.isNaN(val)) return val;
+    if (sem === 1 && typeof o.average === 'number' && !Number.isNaN(o.average)) return o.average;
+    return null;
+  };
+
   // ✅ Upcoming: OPEN + SCHEDULED, sorted by urgency + due time
-  const isOpen = (q: StudentQuiz) => (q.is_open === true) ;
-  const isUpcoming = (q: StudentQuiz) => (q.is_upcoming === true);
+  const isOpen = (q: StudentQuiz) => q.is_open === true;
+  const isUpcoming = (q: StudentQuiz) => q.is_upcoming === true;
 
   const upcoming = useMemo(() => {
-
     const items = quizzes
       .filter((q) => isOpen(q) || isUpcoming(q))
       .map((q) => {
@@ -118,7 +147,9 @@ export default function StudentDashboard() {
             : 'SCHEDULED';
         const iso = dueIso(q);
         const urgency = urgencyFromDate(iso);
-        const takeable = canTakeQuiz(q);
+        const attempt = attemptsByQuizId.get(q.id);
+        const isCompleted = !!attempt && (attempt.status === 'SUBMITTED' || attempt.status === 'GRADED' || (attempt.score !== null && attempt.score !== undefined));
+        const takeable = !isCompleted && canTakeQuiz(q);
 
         return {
           key: `Q-${q.id}`,
@@ -129,26 +160,42 @@ export default function StudentDashboard() {
           status,
           quizId: q.id,
           takeable,
+          isCompleted,
+          attempt,
           link: takeable ? `/student/activities/${q.id}/take` : `/student/activities`,
         };
       });
 
     const rank = { high: 0, medium: 1, low: 2 } as const;
-    items.sort((a, b) => rank[a.urgency] - rank[b.urgency]);
+    items.sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) {
+        return a.isCompleted ? 1 : -1;
+      }
+      return rank[a.urgency] - rank[b.urgency];
+    });
 
     return items.slice(0, 8);
-  }, [quizzes]);
+  }, [quizzes, attemptsByQuizId]);
 
   const stats = useMemo(() => {
-    const avgs = offerings
-      .map((o) => o.average)
-      .filter((v) => typeof v === 'number')
-      .map((v) => safeNumber(v));
+    const semGrades = offerings
+      .map((o) => getSubjectSemesterGrade(o, selectedSemester))
+      .filter((v): v is number => v !== null);
 
-    const overallAvg = avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : null;
+    const overallAvg = semGrades.length ? semGrades.reduce((a, b) => a + b, 0) / semGrades.length : null;
 
     const openCount = quizzes.filter((q) => q.is_open).length;
     const scheduledCount = quizzes.filter((q) => q.is_upcoming).length;
+
+    let completedCount = 0;
+    for (const q of quizzes) {
+      const att = attemptsByQuizId.get(q.id);
+      if (att && (att.status === 'SUBMITTED' || att.status === 'GRADED' || att.score !== null)) {
+        completedCount++;
+      }
+    }
+
+    const pendingCount = Math.max(0, openCount - completedCount);
 
     return {
       subjectCount: offerings.length,
@@ -156,8 +203,10 @@ export default function StudentDashboard() {
       openScheduled: openCount + scheduledCount,
       openCount,
       scheduledCount,
+      completedCount,
+      pendingCount,
     };
-  }, [offerings, quizzes]);
+  }, [offerings, quizzes, selectedSemester, attemptsByQuizId]);
 
   if (isLoading || subjectsLoading || quizzesLoading) {
     return (
@@ -233,7 +282,7 @@ export default function StudentDashboard() {
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-slate-500">Good morning,</p>
+            <p className="text-sm font-medium text-slate-500">{getGreeting()}</p>
             <h1 className="mt-1 text-4xl font-lora font-extrabold tracking-wide text-slate-950 sm:text-[44px]">
                 {student?.first_name} ! 
             </h1>
@@ -262,14 +311,77 @@ export default function StudentDashboard() {
 
         </header>
 
+        {/* Quick Metric Stats */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">Sem {selectedSemester} Avg</span>
+              <div className="h-9 w-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                <Award size={18} />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-black text-slate-900">
+              {stats.overallAvg !== null ? stats.overallAvg.toFixed(1) : '—'}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              {stats.overallAvg !== null && stats.overallAvg >= 75 ? (
+                <span className="font-bold text-emerald-600">Passing Standing</span>
+              ) : stats.overallAvg !== null ? (
+                <span className="font-bold text-rose-600">Needs Improvement</span>
+              ) : (
+                'No grades recorded yet'
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">Enrolled Subjects</span>
+              <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                <BookOpen size={18} />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-black text-slate-900">
+              {stats.subjectCount}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">Active enrollments</div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">Pending Activities</span>
+              <div className="h-9 w-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+                <Clock size={18} />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-black text-slate-900">
+              {stats.pendingCount}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">To be completed</div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">Completed Quizzes</span>
+              <div className="h-9 w-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                <CheckCircle2 size={18} />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-black text-slate-900">
+              {stats.completedCount}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">Submitted attempts</div>
+          </div>
+        </section>
+
         {/* Main */}
         <section className="space-y-6">
-          {/* Top Row: Stats + Subjects */}
+          {/* Top Row: Gauge + Subjects */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
             {/* Stats */}
             <StatCard
-              label="Current Semester Average"
+              label={`Semester ${selectedSemester} Average`}
               value={stats.overallAvg}
             />
 
@@ -295,6 +407,8 @@ export default function StudentDashboard() {
               ) : (
                 <div className="divide-y divide-slate-100">
                   {offerings.map((o) => {
+                    const semGrade = getSubjectSemesterGrade(o, selectedSemester);
+
                     return (
                       <Link
                         key={o.id}
@@ -317,7 +431,7 @@ export default function StudentDashboard() {
 
                             {/* Teacher - Desktop */}
                             <div className="hidden md:block text-xs text-slate-500 truncate">
-                              Teacher: {o.teacher_name || "N/A"}
+                              • {o.teacher_name || "N/A"}
                             </div>
                           </div>
 
@@ -327,11 +441,29 @@ export default function StudentDashboard() {
                           </div>
                         </div>
 
-                        {/* Chevron */}
-                        <ChevronRight
-                          size={18}
-                          className="shrink-0 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all"
-                        />
+                        {/* Grade Badge + Chevron */}
+                        <div className="shrink-0 flex items-center gap-3">
+                          {semGrade !== null ? (
+                            <span
+                              className={`px-3 py-1 rounded-xl text-xs font-black ${
+                                semGrade >= 75
+                                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                  : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                              }`}
+                            >
+                              {semGrade.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="px-3 py-1 rounded-xl text-xs font-bold bg-slate-50 text-slate-400 ring-1 ring-slate-200">
+                              No grade
+                            </span>
+                          )}
+
+                          <ChevronRight
+                            size={18}
+                            className="text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all"
+                          />
+                        </div>
                       </Link>
                     );
                   })}
@@ -341,7 +473,6 @@ export default function StudentDashboard() {
           </div>
 
           {/* Bottom Row: Upcoming Activities */}
-          {/* Upcoming Activities */}
           <div className="grid grid-cols-1">
             <aside className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
 
@@ -352,7 +483,7 @@ export default function StudentDashboard() {
                 </h2>
 
                 <Link
-                  to="/student/activities/"
+                  to="/student/activities"
                   className="text-xs font-black text-indigo-600 hover:underline"
                 >
                   View all
@@ -393,7 +524,7 @@ export default function StudentDashboard() {
                       <Link
                         key={t.key}
                         to={t.link}
-                        className="group grid grid-cols-[1fr_24px] md:grid-cols-[1.2fr_2fr_1.5fr_1fr_24px] items-center gap-4 px-3 py-4 rounded-xl hover:bg-slate-50 transition-all"
+                        className="group grid grid-cols-[1fr_auto_24px] md:grid-cols-[1.2fr_2fr_1.5fr_1fr_24px] items-center gap-4 px-3 py-4 rounded-xl hover:bg-slate-50 transition-all"
                       >
 
                         {/* Subject */}
@@ -419,21 +550,26 @@ export default function StudentDashboard() {
                           </span>
                         </div>
 
-                        {/* Availability */}
+                        {/* Availability / Score */}
                         <div className="hidden md:block">
-                          <StatusPill status={t.status} />
+                          {t.isCompleted && t.attempt ? (
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                              Score: {t.attempt.score ?? 0}/{t.attempt.total ?? 0}
+                            </span>
+                          ) : (
+                            <StatusPill status={t.status} />
+                          )}
                         </div>
 
-                        {/* Mobile Date */}
+                        {/* Mobile Date & Status */}
                         <div className="md:hidden min-w-0">
                           <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                             <Clock size={13} />
 
                             <span className="truncate">
-                              {t.status === "OPEN"
-                                ? "Closes"
-                                : "Opens"}
-                              : {t.dueLabel}
+                              {t.isCompleted && t.attempt
+                                ? `Score: ${t.attempt.score ?? 0}/${t.attempt.total ?? 0}`
+                                : `${t.status === "OPEN" ? "Closes" : "Opens"}: ${t.dueLabel}`}
                             </span>
                           </div>
                         </div>

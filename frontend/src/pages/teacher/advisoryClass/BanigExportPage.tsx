@@ -1,7 +1,16 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-
-const base = "http://127.0.0.1:8000/api";
+import type { QueryClient } from "@tanstack/react-query";
+import {
+  getTeacherAdvisoryDetail,
+  getAdvisoryStudents,
+  getStudentSemesterSummary,
+} from "../../../api/teacherApi";
+import type {
+  TeacherAdvisoryDetail,
+  AdvisoryStudent,
+  SemesterSummaryRow,
+} from "../../../types/teacherTypes";
 
 function parseJwt(token: string): any {
   try {
@@ -11,49 +20,89 @@ function parseJwt(token: string): any {
   }
 }
 
-export async function generateBanigPDF() {
-  const token = localStorage.getItem("access");
+export interface GenerateBanigPDFOptions {
+  queryClient?: QueryClient;
+  teacher?: TeacherAdvisoryDetail | null;
+  students?: AdvisoryStudent[];
+  token?: string | null;
+}
+
+export async function generateBanigPDF(options?: GenerateBanigPDFOptions) {
+  const token = options?.token ?? localStorage.getItem("access");
   if (!token) return;
 
   const payload = parseJwt(token);
-  const userId = payload?.user_id ?? payload?.id;
+  const userId = Number(payload?.user_id ?? payload?.id ?? 0);
+  if (!userId) return;
+
+  const queryClient = options?.queryClient;
 
   // =============================
-  // FETCH TEACHER (Adviser)
+  // RESOLVE / FETCH TEACHER (Adviser)
   // =============================
-  const teacherRes = await fetch(`${base}/teachers/${userId}/`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let teacher: TeacherAdvisoryDetail | null = options?.teacher ?? null;
+  if (!teacher) {
+    if (queryClient) {
+      teacher = await queryClient.fetchQuery({
+        queryKey: ["teacher", "advisory", userId],
+        queryFn: () => getTeacherAdvisoryDetail(userId),
+        staleTime: 10 * 60 * 1000,
+      });
+    } else {
+      teacher = await getTeacherAdvisoryDetail(userId);
+    }
+  }
 
-  const teacher = await teacherRes.json();
-  if (!teacher.advisory) return;
+  if (!teacher?.advisory) return;
 
+  const sectionId = teacher.advisory.id;
   const adviserName = `${teacher.first_name} ${teacher.last_name}`;
   const schoolYear = "2024-2025";
   const curriculumYear = teacher.advisory.grade_level;
 
   // =============================
-  // FETCH STUDENTS
+  // RESOLVE / FETCH STUDENTS
   // =============================
-  const studentsRes = await fetch(
-    `${base}/sections/${teacher.advisory.id}/students/`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-
-  const students = await studentsRes.json();
+  let students: AdvisoryStudent[] = options?.students ?? [];
+  if (!students || students.length === 0) {
+    if (queryClient) {
+      students = await queryClient.fetchQuery({
+        queryKey: ["teacher", "advisory", "section", sectionId, "students"],
+        queryFn: () => getAdvisoryStudents(sectionId),
+        staleTime: 5 * 60 * 1000,
+      });
+    } else {
+      students = await getAdvisoryStudents(sectionId);
+    }
+  }
 
   // =============================
-  // FETCH GRADES (parallel)
+  // FETCH / RESOLVE GRADES (Using React Query cache)
   // =============================
   const allStudentData = await Promise.all(
-    students.map(async (student: any) => {
-      const res = await fetch(
-        `${base}/students/${student.id}/semester-summary/`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      const grades = await res.json();
-      return { student, grades: Array.isArray(grades) ? grades : [] };
+    students.map(async (student: AdvisoryStudent) => {
+      try {
+        let grades: SemesterSummaryRow[];
+        if (queryClient) {
+          grades = await queryClient.fetchQuery({
+            queryKey: [
+              "teacher",
+              "advisory",
+              "student",
+              student.id,
+              "semester-summary",
+            ],
+            queryFn: () => getStudentSemesterSummary(student.id),
+            staleTime: 5 * 60 * 1000,
+          });
+        } else {
+          grades = await getStudentSemesterSummary(student.id);
+        }
+        return { student, grades: Array.isArray(grades) ? grades : [] };
+      } catch (err) {
+        console.error(`Failed to load grades for student ${student.id}:`, err);
+        return { student, grades: [] };
+      }
     })
   );
 

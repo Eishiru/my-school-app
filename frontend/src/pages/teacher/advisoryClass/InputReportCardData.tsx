@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Download, ArrowLeft, Calendar, Heart, User, GraduationCap, Eye } from "lucide-react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useStudentDetail } from "../../../hooks/useTeacherSubjects";
 import { generateSF9PDF } from "./ExportReportCard";
 
 type AttendanceState = {
@@ -17,6 +19,10 @@ export default function InputReportCardData() {
     const navigate = useNavigate();
     const location = useLocation();
     const { studentId } = useParams<{ studentId: string }>();
+    const sid = Number(studentId) || 0;
+    const queryClient = useQueryClient();
+
+    const { data: studentDetail } = useStudentDetail(sid, sid > 0);
     
     const [loading, setLoading] = useState(false);
     const [downloading, setDownloading] = useState(false);
@@ -60,24 +66,21 @@ export default function InputReportCardData() {
             setAge(passedStudent.age ?? "");
             setSex(passedStudent.sex || "");
         }
-        const token = localStorage.getItem("access");
-        if (token && studentId) {
-            fetch(`http://127.0.0.1:8000/api/students/${studentId}/`, {
-                headers: { Authorization: `Bearer ${token}` }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data) {
-                    setName(prev => prev || `${data.first_name || ""} ${data.last_name || ""}`.trim());
-                    setLrn(prev => prev || data.school_id || "");
-                    setSection(prev => prev || data.section_name || "");
-                    if (data.age != null && data.age !== "") setAge(prev => prev !== "" ? prev : data.age);
-                    if (data.sex) setSex(prev => prev || data.sex);
-                }
-            })
-            .catch(() => {});
+    }, [passedStudent]);
+
+    useEffect(() => {
+        if (studentDetail) {
+            setName(prev => prev || `${studentDetail.first_name || ""} ${studentDetail.last_name || ""}`.trim());
+            setLrn(prev => prev || studentDetail.school_id || "");
+            setSection(prev => prev || studentDetail.section_name || "");
+            if (studentDetail.age != null) {
+                setAge(prev => (prev !== "" ? prev : Number(studentDetail.age)));
+            }
+            if (studentDetail.sex) {
+                setSex(prev => prev || studentDetail.sex!);
+            }
         }
-    }, [studentId, passedStudent]);
+    }, [studentDetail]);
 
     const months = ["AUG", "SEPT", "OCT", "NOV", "DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JULY"];
     const totalSchoolDays = attendance.schoolDays.reduce((a, b) => a + b, 0);
@@ -122,6 +125,8 @@ export default function InputReportCardData() {
                 attendance,
                 observedValues,
                 token,
+                studentDetail,
+                queryClient,
             });
         } catch (err) {
             console.error("Failed to generate PDF:", err);

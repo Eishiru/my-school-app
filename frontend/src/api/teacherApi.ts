@@ -1,5 +1,5 @@
 import { authFetch } from "./apiClient";
-import type { AdvisoryStudent, ApplySemesterWeightsPayload, BatchRecordQuizScoresPayload, BatchRecordQuizScoresResponse, CreateQuizPayload, CreateQuizQuestionPayload, CreateQuizResponse, DeleteQuizQuestionPayload, DeleteSemesterGradePayload, DeleteSubjectFilePayload, DeleteTeacherQuizPayload, GradeAnswerPayload, QuizItemAnalysisData, RecentQuizGrade, SaveSemesterGradePayload, Semester, SemesterGrade, SemesterSummaryRow, StudentSubmission, TeacherAdvisoryDetail, TeacherQuiz, TeacherQuizActivity, TeacherQuizQuestion, TeacherSemesterGrade, TeacherSubjectFile, TeacherSubjectOffering, TeacherSubjectStudent, TeacherSubjectSubmissionDetail, UpdateQuizQuestionPayload, UpdateQuizStatusPayload, UpdateQuizTimesPayload, UploadSubjectFilePayload } from "../types/teacherTypes";
+import type { AdvisoryStudent, ApplySemesterWeightsPayload, BatchRecordQuizScoresPayload, BatchRecordQuizScoresResponse, CreateQuizPayload, CreateQuizQuestionPayload, CreateQuizResponse, DeleteQuizQuestionPayload, DeleteSemesterGradePayload, DeleteSubjectFilePayload, DeleteTeacherQuizPayload, GradeAnswerPayload, QuizItemAnalysisData, RecentQuizGrade, SaveSemesterGradePayload, Semester, SemesterGrade, SemesterSummaryRow, StudentDetail, StudentSubmission, TeacherAdvisoryDetail, TeacherQuiz, TeacherQuizActivity, TeacherQuizQuestion, TeacherSemesterGrade, TeacherSubjectFile, TeacherSubjectOffering, TeacherSubjectStudent, TeacherSubjectSubmissionDetail, UpdateQuizQuestionPayload, UpdateQuizStatusPayload, UpdateQuizTimesPayload, UploadSubjectFilePayload } from "../types/teacherTypes";
 
 export async function getTeacherSubjects(): Promise<TeacherSubjectOffering[]> {
   const response = await authFetch("/subject-offerings/", {
@@ -879,4 +879,23 @@ export async function getStudentSemesterSummary(
   return Array.isArray(data)
     ? data
     : data.results ?? [];
+}
+
+export async function getStudentDetail(
+  studentId: number
+): Promise<StudentDetail> {
+  const response = await authFetch(
+    `/students/${studentId}/`,
+    {
+      method: "GET",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch student details: ${response.status}`
+    );
+  }
+
+  return response.json();
 }

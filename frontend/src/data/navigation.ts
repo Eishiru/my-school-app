@@ -31,6 +31,6 @@ export const navigation: Record<string, NavItem[]> = {
   STUDENT: [
     { name: "Dashboard", to: "/student/dashboard", Icon: LayoutDashboard },
     { name: "Subjects", to: "/student/subject", Icon: BookCopy },
-    { name: "Report Card", to: "/student/grades/quarterly", Icon: Book },
+    { name: "Report Card", to: "/student/report-card", Icon: Book },
   ],
 };
