@@ -10,13 +10,15 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { useCreateAdminUser } from "../../../../hooks/useAdminData";
 
 
 const CreateTeacherAccountPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = location.state?.activeTab || "teacher";
-  const [loading, setLoading] = useState(false);
+  const createMutation = useCreateAdminUser();
+  const loading = createMutation.isPending;
 
   // NEW: show/hide toggles
   const [showPassword, setShowPassword] = useState(false);
@@ -109,42 +111,23 @@ const CreateTeacherAccountPage = () => {
     // ✅ Block account creation if invalid
     if (!validatePasswords()) return;
 
-    setLoading(true);
-
     try {
-      const accessToken = localStorage.getItem("access");
-
-      const response = await fetch("http://127.0.0.1:8000/api/user/create/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
+      await createMutation.mutateAsync({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+        school_id: formData.school_id,
+        role: formData.role,
+        teacher_profile: {
+          department: formData.department,
         },
-        body: JSON.stringify({
-
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            email: formData.email,
-            password: formData.password,
-            school_id: formData.school_id,
-            role: formData.role,
-            teacher_profile: {
-                department: formData.department,
-            },
-        }),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to create account");
-      }
 
       alert("Account created successfully!");
       navigate("/admin/accounts", { state: { activeTab } });
     } catch (error: any) {
       alert(error.message);
-    } finally {
-      setLoading(false);
     }
   };
 

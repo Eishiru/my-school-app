@@ -18,6 +18,7 @@ import {
   ChevronUp,
   RefreshCw,
   Users,
+  ArrowLeft,
 } from "lucide-react";
 
 import {
@@ -444,165 +445,85 @@ export default function TeacherSubjectSubmissionsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-
-      <section className="mx-auto w-full px-4 md:px-6 py-6 md:py-10 space-y-6">
-
-        {/* Header */}
-
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-
-          <div>
-
-            <Link
-              to="/teacher/submissions"
-              className="text-sm font-black text-indigo-600 hover:underline"
-            >
-              ← Back to
-              Submissions
-            </Link>
-
-            <div className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Subject
-              Submissions
-            </div>
-
-            <h1 className="mt-1 text-2xl md:text-3xl font-black tracking-tight text-slate-900">
-              {
-                data.subject
-              }
-            </h1>
-
-            <p className="mt-2 text-sm text-slate-600">
-
-              <span className="font-black text-slate-800">
-                {
-                  data.totals
-                    .unique_students
-                }
-              </span>
-
-              {" / "}
-
-              <span className="font-black text-slate-800">
-                {
-                  data.total_students
-                }
-              </span>
-
-              {" "}students
-              attempted
-
-              {" • "}
-
-              <span className="font-black text-indigo-600">
-                {
-                  data.totals
-                    .submission_rate
-                }
-                %
-              </span>
-
-              {" • "}
-
-              {
-                data.totals
-                  .attempts
-              }{" "}
-              total attempt
-              {data.totals
-                .attempts ===
-              1
-                ? ""
-                : "s"}
-
-            </p>
-
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              refetch()
-            }
-            disabled={
-              isFetching
-            }
-            className="inline-flex self-start items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <Link
+            to="/teacher/submissions"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shrink-0 mb-3"
           >
-            <RefreshCw
-              size={
-                16
-              }
-              className={
-                isFetching
-                  ? "animate-spin"
-                  : ""
-              }
-            />
+            <ArrowLeft size={13} />
+            <span>Back to Submissions</span>
+          </Link>
 
-            Refresh
-          </button>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            {data.subject}
+          </h1>
 
+          <p className="mt-1 text-sm text-slate-500">
+            <span className="font-semibold text-slate-800">
+              {data.totals.unique_students}
+            </span>
+            {" / "}
+            <span className="font-semibold text-slate-800">
+              {data.total_students}
+            </span>{" "}
+            students attempted •{" "}
+            <span className="font-semibold text-indigo-600">
+              {data.totals.submission_rate}% rate
+            </span>{" "}
+            • {data.totals.attempts} total attempt
+            {data.totals.attempts === 1 ? "" : "s"}
+          </p>
         </div>
 
-        {/* Summary */}
-
-        <div className="grid gap-4 sm:grid-cols-3">
-
-          <SummaryCard
-            label="Unique Students"
-            value={
-              data.totals
-                .unique_students
-            }
-            description={`Out of ${data.total_students} enrolled`}
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex self-start items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 shadow-xs transition-colors"
+        >
+          <RefreshCw
+            size={13}
+            className={isFetching ? "animate-spin text-indigo-600" : "text-slate-400"}
           />
+          <span>Refresh</span>
+        </button>
+      </div>
 
-          <SummaryCard
-            label="Total Attempts"
-            value={
-              data.totals
-                .attempts
-            }
-            description="Submitted quiz attempts"
-          />
+      {/* Summary */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SummaryCard
+          label="Unique Students"
+          value={data.totals.unique_students}
+          description={`Out of ${data.total_students} enrolled`}
+        />
 
-          <SummaryCard
-            label="Quizzes"
-            value={
-              data.quizzes.length
-            }
-            description="Quizzes in this subject"
-          />
+        <SummaryCard
+          label="Total Attempts"
+          value={data.totals.attempts}
+          description="Submitted quiz attempts"
+        />
 
+        <SummaryCard
+          label="Quizzes"
+          value={data.quizzes.length}
+          description="Quizzes in this subject"
+        />
+      </div>
+
+      {/* Quizzes */}
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+          <h2 className="text-sm font-semibold text-slate-900">
+            Quiz Submission Breakdown
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Expand a quiz to view students. Multiple attempts are reduced to the student's highest score.
+          </p>
         </div>
 
-        {/* Quizzes */}
-
-        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-
-          <div className="px-6 py-5 border-b border-slate-100">
-
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Quizzes
-            </div>
-
-            <h2 className="mt-1 text-lg font-black text-slate-900">
-              Quiz Submission
-              Breakdown
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Expand a quiz to
-              view students.
-              Multiple attempts
-              are reduced to the
-              student's highest
-              score.
-            </p>
-
-          </div>
 
           {data.quizzes.length ===
           0 ? (
@@ -825,11 +746,8 @@ export default function TeacherSubjectSubmissionsPage() {
 
           )}
 
-        </div>
-
-      </section>
-
-    </main>
+      </div>
+    </div>
   );
 }
 
@@ -965,32 +883,23 @@ function SummaryCard({
   value,
   description,
 }: {
-  label:
-    string;
-
-  value:
-    number;
-
-  description:
-    string;
+  label: string;
+  value: number;
+  description: string;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-
-      <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm hover:border-indigo-200 transition-all">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">
         {label}
       </div>
 
-      <div className="mt-2 text-3xl font-black text-slate-900">
+      <div className="mt-1.5 text-2xl font-bold tracking-tight text-slate-900 font-mono">
         {value}
       </div>
 
-      <div className="mt-1 text-xs text-slate-500">
-        {
-          description
-        }
+      <div className="mt-0.5 text-xs text-slate-400">
+        {description}
       </div>
-
     </div>
   );
 }
@@ -1001,31 +910,14 @@ function SummaryCard({
 
 function LoadingState() {
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
-
-      <div className="space-y-4">
-
-        {Array.from({
-          length: 4,
-        }).map(
-          (
-            _,
-            index
-          ) => (
-
-          <div
-            key={
-              index
-            }
-            className="h-24 rounded-3xl border border-slate-200 bg-white animate-pulse"
-          />
-
-          )
-        )}
-
-      </div>
-
-    </main>
+    <div className="space-y-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-24 rounded-xl border border-slate-200/80 bg-white animate-pulse"
+        />
+      ))}
+    </div>
   );
 }
 
@@ -1033,45 +925,26 @@ function ErrorState({
   message,
   onRetry,
 }: {
-  message:
-    string;
-
+  message: string;
   onRetry?: () => void;
 }) {
   return (
-    <main className="min-h-[70vh] bg-slate-50 p-6">
+    <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-8 text-center max-w-xl mx-auto">
+      <AlertCircle size={24} className="mx-auto text-rose-500" />
 
-      <div className="mx-auto max-w-xl rounded-3xl border border-rose-200 bg-white p-8 text-center">
-
-        <AlertCircle
-          size={
-            28
-          }
-          className="mx-auto text-rose-500"
-        />
-
-        <div className="mt-3 font-black text-slate-900">
-          {
-            message
-          }
-        </div>
-
-        {onRetry && (
-
-          <button
-            type="button"
-            onClick={
-              onRetry
-            }
-            className="mt-4 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-black text-white hover:bg-indigo-600"
-          >
-            Try Again
-          </button>
-
-        )}
-
+      <div className="mt-2 font-semibold text-sm text-slate-900">
+        {message}
       </div>
 
-    </main>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 transition-colors shadow-xs"
+        >
+          Try Again
+        </button>
+      )}
+    </div>
   );
 }

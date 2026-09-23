@@ -1,4 +1,5 @@
-const API_BASE_URL = "http://127.0.0.1:8000/api";
+export const API_BASE_URL =
+  (import.meta as any).env?.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
 
 export async function authFetch(
   endpoint: string,
@@ -10,20 +11,29 @@ export async function authFetch(
     throw new Error("Access token not found.");
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  // Normalize endpoint to prevent double '/api/api/' prefix
+  const cleanEndpoint = endpoint.startsWith("/api/")
+    ? endpoint.replace(/^\/api/, "")
+    : endpoint.startsWith("/")
+    ? endpoint
+    : `/${endpoint}`;
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  // Only set default Content-Type to JSON if body is not FormData
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(`${API_BASE_URL}${cleanEndpoint}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      ...headers,
       ...options.headers,
     },
   });
-
-  if (!response.ok) {
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}`
-    );
-  }
 
   return response;
 }

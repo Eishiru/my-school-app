@@ -370,7 +370,7 @@ export default function CreateQuiz() {
                 question_type: formData.activity_mode === "GROUP" ? "SHORT_ANSWER" : question.question_type,
                 points: question.points,
                 order,
-                choices: (formData.activity_mode === "GROUP" ? [] : question.choices).map((choice, choiceOrder) => ({
+                choices: (formData.activity_mode === "GROUP" || question.question_type === "SHORT_ANSWER" ? [] : question.choices).map((choice, choiceOrder) => ({
                   choice_text: choice.choice_text.trim(), is_correct: choice.is_correct, order: choiceOrder,
                 })),
               })) },

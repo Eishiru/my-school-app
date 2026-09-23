@@ -1,19 +1,7 @@
 import React, { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import {
-  ArrowLeft,
-  Users,
-  FileText,
-  TrendingUp,
-  BookOpen,
-  type LucideIcon,
-} from "lucide-react";
-
-import {
-  useRecentQuizGrades,
-  useTeacherSubject,
-  useTeacherSubjectQuizzes,
-} from "../../../hooks/useTeacherSubjects";
+import { ArrowLeft, Users, FileText, TrendingUp, BookOpen, type LucideIcon } from "lucide-react";
+import {useRecentQuizGrades, useTeacherSubject, useTeacherSubjectQuizzes} from "../../../hooks/useTeacherSubjects";
 
 import type { QuizStatus } from "../../../types/teacherTypes";
 

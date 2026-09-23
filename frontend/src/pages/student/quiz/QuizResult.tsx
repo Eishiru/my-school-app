@@ -1,213 +1,279 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import {
+  CheckCircle2,
+  Clock,
+  ArrowLeft,
+  LayoutDashboard,
+  Sparkles,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  AlertTriangle,
+  FileCheck,
+  Eye,
+} from 'lucide-react';
+import { useStudentGradeForecast } from '../../../hooks/useStudentQuizzes';
 
 interface QuizResultData {
   score: number;
   total_points: number;
   percentage: number;
+  quiz_id?: number;
   quiz_title: string;
   subject_name: string;
   subject_id?: number;
-}
-
-interface GradeForecast {
-  predicted_grade: number;
-  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
-  performance_trend: 'IMPROVING' | 'STABLE' | 'DECLINING';
+  status?: string;
+  requires_manual_grading?: boolean;
+  is_closed?: boolean;
+  time_spent?: number;
+  auto_submitted?: boolean;
 }
 
 export default function QuizResult() {
   const location = useLocation();
   const navigate = useNavigate();
   const [result, setResult] = useState<QuizResultData | null>(null);
-  const [forecast, setForecast] = useState<GradeForecast | null>(null);
-  const [loadingForecast, setLoadingForecast] = useState(false);
 
   useEffect(() => {
-    // Get result data from navigation state
     if (location.state && location.state.result) {
       setResult(location.state.result);
-      // Fetch forecast if subject_id is available
-      if (location.state.result.subject_id) {
-        fetchForecast(location.state.result.subject_id);
-      }
     } else {
-      // If no data, redirect back to quiz list
       navigate('/student/activities');
     }
   }, [location, navigate]);
 
-  const fetchForecast = async (subjectId: number) => {
-    setLoadingForecast(true);
-    try {
-      const savedUser = localStorage.getItem('user');
-      const token = savedUser ? JSON.parse(savedUser).token : null;
-      
-      const response = await axios.get(
-        `http://127.0.0.1:8000/api/student/grade-forecast/${subjectId}/`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setForecast(response.data);
-    } catch (error) {
-      console.log('No forecast available yet');
-    } finally {
-      setLoadingForecast(false);
-    }
+  const { data: forecast, isLoading: loadingForecast } = useStudentGradeForecast(
+    result?.subject_id
+  );
+
+  const formatDuration = (seconds?: number) => {
+    if (!seconds || seconds <= 0) return '0s';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins === 0) return `${secs}s`;
+    return `${mins}m ${secs.toString().padStart(2, '0')}s`;
   };
 
-  const getRiskColor = (risk: string) => {
+  const getRiskBadge = (risk: string) => {
     switch (risk) {
-      case 'LOW': return 'bg-green-100 text-green-700 border-green-300';
-      case 'MEDIUM': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-      case 'HIGH': return 'bg-red-100 text-red-700 border-red-300';
-      default: return 'bg-gray-100 text-gray-700 border-gray-300';
+      case 'LOW':
+        return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20';
+      case 'MEDIUM':
+        return 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20';
+      case 'HIGH':
+        return 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20';
+      default:
+        return 'bg-slate-50 text-slate-700 ring-1 ring-slate-200';
     }
   };
 
-  const getTrendIcon = (trend: string) => {
+  const renderTrendIcon = (trend: string) => {
     switch (trend) {
-      case 'IMPROVING': return '📈';
-      case 'STABLE': return '➡️';
-      case 'DECLINING': return '📉';
-      default: return '';
+      case 'IMPROVING':
+        return <TrendingUp size={16} className="text-emerald-600" />;
+      case 'STABLE':
+        return <Minus size={16} className="text-slate-500" />;
+      case 'DECLINING':
+        return <TrendingDown size={16} className="text-rose-600" />;
+      default:
+        return null;
     }
   };
 
   if (!result) {
-    return <div className="p-8">Loading results...</div>;
+    return (
+      <div className="flex h-72 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-500">Loading activity results...</p>
+        </div>
+      </div>
+    );
   }
 
-  const getGradeColor = (percentage: number) => {
-    if (percentage >= 90) return 'text-green-600';
-    if (percentage >= 75) return 'text-blue-600';
-    if (percentage >= 60) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getGradeMessage = (percentage: number) => {
-    if (percentage >= 90) return 'Excellent work! 🌟';
-    if (percentage >= 75) return 'Great job! 👏';
-    if (percentage >= 60) return 'Good effort! 👍';
-    return 'Keep practicing! 💪';
-  };
+  const isPendingGrading =
+    result.requires_manual_grading || result.status === 'SUBMITTED';
+  const isPassing = (result.percentage || 0) >= 75;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-block p-4 bg-blue-100 rounded-full mb-4">
-            <svg className="w-16 h-16 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Quiz Completed!</h1>
-          <p className="text-gray-600">{result.quiz_title}</p>
-          <p className="text-sm text-gray-500">{result.subject_name}</p>
+    <div className="max-w-xl mx-auto space-y-6 py-6">
+      {/* Result Card */}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xs text-center">
+        {/* Header Icon */}
+        <div
+          className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full mb-4 ${
+            isPendingGrading
+              ? 'bg-amber-50 text-amber-600'
+              : 'bg-emerald-50 text-emerald-600'
+          }`}
+        >
+          {isPendingGrading ? <FileCheck size={28} /> : <CheckCircle2 size={28} />}
         </div>
 
-        {/* Score Display */}
-        <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-8 mb-6 text-white text-center">
-          <p className="text-lg mb-2 opacity-90">Your Score</p>
-          <div className="text-6xl font-bold mb-2">
-            {result.score}/{result.total_points}
-          </div>
-          <div className={`text-4xl font-bold ${getGradeColor(result.percentage)} bg-white rounded-lg py-2 px-4 inline-block`}>
-            {result.percentage.toFixed(1)}%
-          </div>
-        </div>
+        <span
+          className={`inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+            isPendingGrading
+              ? 'bg-amber-50 text-amber-700 border border-amber-200/80'
+              : 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+          }`}
+        >
+          {isPendingGrading
+            ? 'Submission Received – Pending Teacher Grading'
+            : 'Activity Completed & Graded'}
+        </span>
 
-        {/* Grade Message */}
-        <div className="text-center mb-8">
-          <p className="text-2xl font-semibold text-gray-700 mb-4">
-            {getGradeMessage(result.percentage)}
-          </p>
-          <p className="text-gray-600">
-            You answered <span className="font-bold">{result.score} out of {result.total_points}</span> points correctly.
-          </p>
-        </div>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
+          {result.quiz_title}
+        </h1>
+        <p className="text-xs text-slate-500 mt-0.5">{result.subject_name}</p>
 
-        {/* Performance Bar */}
-        <div className="mb-8">
-          <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-            <div 
-              className={`h-full rounded-full transition-all duration-1000 ${
-                result.percentage >= 75 ? 'bg-green-500' : 
-                result.percentage >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-              }`}
-              style={{ width: `${result.percentage}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Thank You Message */}
-        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded">
-          <p className="text-blue-800 font-medium text-center">
-            Thank you for completing this quiz! Keep up the great work! 🎉
-          </p>
-        </div>
-
-        {/* AI Grade Forecast Section */}
-        {forecast && !loadingForecast && (
-          <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-6 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-2xl">🤖</span>
-              <h3 className="text-lg font-bold text-gray-800">AI Grade Forecast</h3>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="bg-white rounded-lg p-4 text-center">
-                <p className="text-sm text-gray-600 mb-1">Predicted Grade</p>
-                <p className="text-3xl font-bold text-indigo-600">{forecast.predicted_grade.toFixed(1)}%</p>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4 text-center">
-                <p className="text-sm text-gray-600 mb-1">Risk Level</p>
-                <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold border ${getRiskColor(forecast.risk_level)}`}>
-                  {forecast.risk_level}
-                </span>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4 text-center">
-                <p className="text-sm text-gray-600 mb-1">Trend</p>
-                <p className="text-2xl">{getTrendIcon(forecast.performance_trend)}</p>
-                <p className="text-xs font-semibold text-gray-700">{forecast.performance_trend}</p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => navigate('/student/grade-forecast')}
-              className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors text-sm"
-            >
-              View Detailed Forecast & Recommendations →
-            </button>
+        {/* Time Spent Pill */}
+        {result.time_spent !== undefined && (
+          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-mono text-xs font-semibold">
+            <Clock size={12} className="text-slate-400" />
+            <span>Time Spent: {formatDuration(result.time_spent)}</span>
           </div>
         )}
 
-        {loadingForecast && (
-          <div className="bg-gray-50 rounded-xl p-6 mb-6 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div>
-            <p className="text-gray-600 text-sm">Loading AI forecast...</p>
+        {/* Score or Pending Status Panel */}
+        {isPendingGrading ? (
+          <div className="my-6 rounded-xl border border-amber-200 bg-amber-50/40 p-5 text-left">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-amber-100 p-2 text-amber-700 shrink-0 mt-0.5">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                  Teacher Evaluation Required
+                </h3>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  This activity contains questions (such as essays or short answers) that require
+                  teacher manual review. Your answers have been safely submitted.
+                </p>
+                <div className="mt-3 pt-3 border-t border-amber-200/60 flex items-center justify-between text-xs">
+                  <span className="text-amber-800 font-medium">Auto-graded Points:</span>
+                  <span className="font-mono font-bold text-amber-950">
+                    {result.score} / {result.total_points}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="my-6 rounded-xl border border-slate-200 bg-slate-50/60 p-6">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Final Score
+            </span>
+            <div className="mt-2 font-mono text-4xl sm:text-5xl font-bold tracking-tight text-slate-900">
+              {result.score}{' '}
+              <span className="text-2xl text-slate-400 font-medium">/ {result.total_points}</span>
+            </div>
+
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <span
+                className={`font-mono text-sm font-bold px-2.5 py-0.5 rounded-md ${
+                  isPassing
+                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                    : 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
+                }`}
+              >
+                {result.percentage.toFixed(1)}%
+              </span>
+              <span className="text-xs font-medium text-slate-500">
+                {isPassing ? 'Passing Mark' : 'Below Passing Mark'}
+              </span>
+            </div>
+
+            {/* Performance Bar */}
+            <div className="mt-4 w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  isPassing ? 'bg-emerald-500' : 'bg-rose-500'
+                }`}
+                style={{ width: `${Math.min(100, Math.max(0, result.percentage))}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* AI Grade Insights (if available) */}
+        {forecast && !loadingForecast && (
+          <div className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-left">
+            <div className="flex items-center gap-1.5 mb-3">
+              <Sparkles size={14} className="text-indigo-600" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Performance Standing
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg bg-white p-2.5 border border-slate-100 shadow-2xs">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Predicted
+                </p>
+                <p className="font-mono text-base font-bold text-indigo-700 mt-0.5">
+                  {forecast.predicted_grade.toFixed(1)}%
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-white p-2.5 border border-slate-100 shadow-2xs">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Risk Level
+                </p>
+                <span
+                  className={`inline-flex items-center mt-1 px-2 py-0.2 rounded-md text-[10px] font-semibold ${getRiskBadge(
+                    forecast.risk_level
+                  )}`}
+                >
+                  {forecast.risk_level}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-white p-2.5 border border-slate-100 shadow-2xs">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Trend
+                </p>
+                <div className="mt-0.5 flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
+                  {renderTrendIcon(forecast.performance_trend)}
+                  <span>{forecast.performance_trend}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Review Submission Link (if closed or reviewable) */}
+        {result.quiz_id && result.is_closed && (
+          <div className="mb-6">
+            <Link
+              to={`/student/activities/${result.quiz_id}/review`}
+              className="inline-flex items-center justify-center gap-2 w-full rounded-lg border border-indigo-200 bg-indigo-50/60 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+            >
+              <Eye size={14} /> Review Questions & Answers
+            </Link>
           </div>
         )}
 
         {/* Action Buttons */}
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row items-center gap-3">
           <button
+            type="button"
             onClick={() => navigate('/student/activities')}
-            className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+            className="w-full sm:flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
           >
-            Back to Quizzes
+            <ArrowLeft size={14} /> Back to Activities
           </button>
           <button
+            type="button"
             onClick={() => navigate('/student/dashboard')}
-            className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+            className="w-full sm:flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
           >
-            Go to Dashboard
+            <LayoutDashboard size={14} /> Student Dashboard
           </button>
         </div>
       </div>
     </div>
   );
 }
+

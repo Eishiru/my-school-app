@@ -10,6 +10,8 @@ export interface StudentProfile {
     grade_level: string;
     academic_year: string;
     role: string;
+    section_name?: string;
+    section?: string;
 }
 
 export interface StudentSubjectOffering {
@@ -76,6 +78,7 @@ export interface StudentQuiz {
   id: number;
   quiz_id: string;
   SubjectOffering: number;
+  subject?: number;
 
   subject_name: string;
   teacher_name: string;
@@ -161,11 +164,103 @@ export interface StudentQuizAttempt {
   quiz_title?: string;
   subject_name?: string;
   score: number | null;
-  total: number | null;
+  total?: number | null;
+  total_points?: number | null;
   percentage: number | null;
   status: "IN_PROGRESS" | "SUBMITTED" | "GRADED" | "EXPIRED";
+  time_spent?: number;
+  is_closed?: boolean;
+  requires_manual_grading?: boolean;
   started_at?: string;
   submitted_at?: string;
+}
+
+export interface StudentQuizQuestionChoice {
+  id: number;
+  choice_text: string;
+  is_correct?: boolean;
+  order?: number;
+}
+
+export interface StudentQuizQuestion {
+  id: number;
+  question_text: string;
+  question_type: string;
+  points: number;
+  order?: number;
+  choices: StudentQuizQuestionChoice[];
+}
+
+export interface StudentQuizStartResponse {
+  message: string;
+  attempt_id: number;
+  quiz: StudentQuiz;
+  questions: StudentQuizQuestion[];
+}
+
+export interface StudentQuizSubmitResponse {
+  attempt_id: number;
+  score: number;
+  total_points: number;
+  percentage: number;
+  status: string;
+  time_spent?: number;
+  requires_manual_grading: boolean;
+  is_closed: boolean;
+  message?: string;
+  quiz_id?: number;
+  quiz_title?: string;
+  subject_name?: string;
+  subject_id?: number;
+}
+
+export interface StudentQuizAnswerReview {
+  id: number;
+  question: number;
+  question_id?: number;
+  question_text: string;
+  question_type: string;
+  question_points: number;
+  question_order: number;
+  selected_choice?: number | null;
+  correct_choice?: number | null;
+  text_answer?: string | null;
+  answer_file?: string | null;
+  answer_file_url?: string;
+  points_earned?: number | null;
+  is_correct?: boolean | null;
+  teacher_feedback?: string | null;
+  manually_graded?: boolean;
+  graded_at?: string;
+  choices?: {
+    id: number;
+    choice_text: string;
+    is_correct?: boolean;
+  }[];
+}
+
+export interface StudentQuizReviewData {
+  id: number;
+  quiz: number;
+  quiz_id?: number;
+  quiz_title: string;
+  subject_name: string;
+  score: number | null;
+  total_points: number;
+  percentage: number | null;
+  status: string;
+  time_spent?: number;
+  is_closed: boolean;
+  requires_manual_grading: boolean;
+  started_at?: string;
+  submitted_at: string;
+  answers: StudentQuizAnswerReview[];
+}
+
+export interface StudentGradeForecast {
+  predicted_grade: number;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+  performance_trend: 'IMPROVING' | 'STABLE' | 'DECLINING';
 }
 
 export interface StudentSubjectQuarterlyGrade {

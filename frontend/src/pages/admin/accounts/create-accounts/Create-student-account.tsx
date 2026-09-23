@@ -11,14 +11,23 @@ import {
   EyeOff,
   Upload,
   FileSpreadsheet,
+  Calendar,
 } from "lucide-react";
+import {
+  useCreateAdminUser,
+  useImportStudentsExcel,
+} from "../../../../hooks/useAdminData";
 
 const CreateStudentAccountPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = location.state?.activeTab || "student";
 
-  const [loading, setLoading] = useState(false);
+  const createMutation = useCreateAdminUser();
+  const importMutation = useImportStudentsExcel();
+
+  const loading = createMutation.isPending;
+  const excelLoading = importMutation.isPending;
 
   // show/hide toggles
   const [showPassword, setShowPassword] = useState(false);
@@ -29,7 +38,6 @@ const CreateStudentAccountPage = () => {
 
   // Excel upload state
   const [excelFile, setExcelFile] = useState<File | null>(null);
-  const [excelLoading, setExcelLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -40,7 +48,22 @@ const CreateStudentAccountPage = () => {
     school_id: "",
     role: "STUDENT",
     grade_level: "",
+    gender: "",
+    birthdate: "",
   });
+
+  const calculatedAge = useMemo(() => {
+    if (!formData.birthdate) return null;
+    const birth = new Date(formData.birthdate);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age >= 0 ? age : null;
+  }, [formData.birthdate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -110,39 +133,25 @@ const CreateStudentAccountPage = () => {
     e.preventDefault();
     if (!validatePasswords()) return;
 
-    setLoading(true);
-
     try {
-      const token = localStorage.getItem("access");
-
-      const response = await fetch("http://127.0.0.1:8000/api/user/create/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      await createMutation.mutateAsync({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+        school_id: formData.school_id,
+        student_profile: {
+          grade_level: `GRADE_${formData.grade_level}`,
+          gender: formData.gender || null,
+          birthdate: formData.birthdate || null,
         },
-        body: JSON.stringify({
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          email: formData.email,
-          password: formData.password,
-          school_id: formData.school_id,
-          student_profile: {
-            grade_level: `GRADE_${formData.grade_level}`,
-          },
-          role: "STUDENT",
-        }),
+        role: "STUDENT",
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Failed to create user");
 
       alert("Account created successfully!");
       navigate("/admin/accounts", { state: { activeTab } });
     } catch (error: any) {
       alert(error.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -153,30 +162,16 @@ const CreateStudentAccountPage = () => {
       return;
     }
 
-    setExcelLoading(true);
-
     try {
-      const token = localStorage.getItem("access");
       const form = new FormData();
       form.append("file", excelFile);
 
-      const res = await fetch("http://127.0.0.1:8000/api/user/import-students/", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: form,
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Excel import failed");
+      const data = await importMutation.mutateAsync(form);
 
       alert(`Import done! Created: ${data.created}, Failed: ${data.failed}`);
       navigate("/admin/accounts", { state: { activeTab } });
     } catch (e: any) {
       alert(e.message);
-    } finally {
-      setExcelLoading(false);
     }
   };
 
@@ -316,6 +311,45 @@ const CreateStudentAccountPage = () => {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Demographic Information: Sex & Birthdate */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <User size={14} /> Sex
+                </label>
+                <select
+                  name="gender"
+                  value={formData.gender}
+                  onChange={handleChange}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                >
+                  <option value="">Select Sex (Optional)</option>
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <Calendar size={14} /> Birthdate
+                  </label>
+                  {calculatedAge !== null && (
+                    <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                      Age: {calculatedAge} yrs old
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="date"
+                  name="birthdate"
+                  value={formData.birthdate}
+                  onChange={handleChange}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-gray-700"
+                />
               </div>
             </div>
 

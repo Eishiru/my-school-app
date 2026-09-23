@@ -1,119 +1,118 @@
-import { ArrowRight, FolderPlus, Users, X, Trash2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { ArrowRight, Plus, Users, X, Trash2, BookOpen, MoreVertical } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-
-interface Subject {
-  id: number;
-  name: string;
-  faculty_count: number;
-}
+import {
+  useAdminSubjects,
+  useCreateAdminSubject,
+  useDeleteAdminSubject,
+  AdminSubject,
+} from "../../../hooks/useAdminData";
 
 export const FacultyPage = () => {
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const { data: subjects = [], isLoading } = useAdminSubjects();
+  const createMutation = useCreateAdminSubject();
+  const deleteMutation = useDeleteAdminSubject();
+
   const [issubjectModalOpen, setIssubjectModalOpen] = useState(false);
   const [newsubjectName, setNewsubjectName] = useState("");
-  const token = localStorage.getItem("access");
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
+  // Close menu on outside click or Escape
   useEffect(() => {
-    if (!token) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-dept-menu]")) {
+        setOpenMenuId(null);
+      }
+    };
 
-    fetch("http://127.0.0.1:8000/api/subjects/", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setSubjects(data))
-      .catch((err) => console.error("Failed to load subjects", err));
-  }, [token]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenMenuId(null);
+      }
+    };
+
+    if (openMenuId !== null) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
 
   const handleAddDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const res = await fetch("http://127.0.0.1:8000/api/subjects/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("access")}`,
-      },
-      body: JSON.stringify({ name: newsubjectName }),
-    });
-
-    if (!res.ok) {
+    try {
+      await createMutation.mutateAsync(newsubjectName);
+      setIssubjectModalOpen(false);
+      setNewsubjectName("");
+    } catch {
       alert("Failed to create subject");
-      return;
     }
-
-    const created = await res.json();
-    setSubjects((prev) => [...prev, created]);
-
-    setIssubjectModalOpen(false);
-    setNewsubjectName("");
   };
 
   const handleDeleteSubject = async (subjectId: number, subjectName: string) => {
     const ok = window.confirm(`Delete "${subjectName}"? This cannot be undone.`);
     if (!ok) return;
 
-    const res = await fetch(`http://127.0.0.1:8000/api/subjects/${subjectId}/`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("access")}`,
-      },
-    });
-
-    // DRF destroy often returns 204 No Content
-    if (!res.ok && res.status !== 204) {
+    try {
+      await deleteMutation.mutateAsync(subjectId);
+    } catch {
       alert("Failed to delete subject");
-      return;
     }
-
-    setSubjects((prev) => prev.filter((s) => s.id !== subjectId));
   };
 
   return (
-    <main className="flex-1 p-2">
+    <div className="space-y-6">
       {/* Header Section */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Faculty Accounts</h1>
-          <p className="text-slate-500">
-            Select a department to view and manage faculty accounts.
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Faculty & Departments
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Browse curriculum departments and manage instructor assignments
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIssubjectModalOpen(true)}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-xl transition-all font-bold text-sm shadow-sm"
-          >
-            <FolderPlus size={18} className="text-indigo-600" />
-            Add Subject
-          </button>
-        </div>
+        <button
+          onClick={() => setIssubjectModalOpen(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors self-start sm:self-auto"
+        >
+          <Plus size={16} />
+          <span>Add Subject Department</span>
+        </button>
       </div>
 
       {/* Create Subject Modal */}
       {issubjectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
             onClick={() => setIssubjectModalOpen(false)}
           />
 
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all border border-slate-100">
-            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900">Create New Subject</h3>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-indigo-600" />
+                <h3 className="text-sm font-bold text-slate-900">Create New Subject Department</h3>
+              </div>
               <button
                 onClick={() => setIssubjectModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleAddDepartment} className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Subject Name
+            <form onSubmit={handleAddDepartment} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Department / Subject Name
                 </label>
                 <input
                   autoFocus
@@ -121,22 +120,22 @@ export const FacultyPage = () => {
                   type="text"
                   value={newsubjectName}
                   onChange={(e) => setNewsubjectName(e.target.value)}
-                  placeholder="e.g. Social Studies"
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  placeholder="e.g. Mathematics, Science, English"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white focus:ring-1 focus:ring-indigo-500 transition-colors"
                 />
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setIssubjectModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-50 rounded-lg transition-colors"
+                  className="flex-1 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all"
+                  className="flex-1 rounded-lg bg-indigo-600 py-2 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-colors"
                 >
                   Create Department
                 </button>
@@ -147,45 +146,85 @@ export const FacultyPage = () => {
       )}
 
       {/* Grid Section */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {subjects.map((subject) => (
           <div
             key={subject.id}
-            className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow group"
+            className="group rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all flex flex-col justify-between"
           >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-bold text-slate-800">{subject.name}</h2>
-                <p className="text-sm text-slate-400">Department</p>
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    <BookOpen size={18} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                      {subject.name}
+                    </h2>
+                    <p className="text-xs text-slate-400">Department</p>
+                  </div>
+                </div>
+
+                <div className="relative inline-block text-left" data-dept-menu>
+                  <button
+                    onClick={() => setOpenMenuId(openMenuId === subject.id ? null : subject.id)}
+                    className={`p-1.5 rounded-lg border transition-colors ${
+                      openMenuId === subject.id
+                        ? "border-slate-300 bg-slate-100 text-slate-800 shadow-inner"
+                        : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                    }`}
+                    aria-label="Open actions"
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+
+                  {openMenuId === subject.id && (
+                    <div className="absolute right-0 top-full mt-1.5 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-20 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100">
+                      <Link
+                        to={`/admin/faculty/${subject.id}`}
+                        onClick={() => setOpenMenuId(null)}
+                        className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
+                      >
+                        <Users size={14} className="text-indigo-600 shrink-0" />
+                        <span>View Faculty Members</span>
+                      </Link>
+
+                      <div className="my-1 border-t border-slate-100" />
+
+                      <button
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          handleDeleteSubject(subject.id, subject.name);
+                        }}
+                        className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 font-medium transition-colors"
+                      >
+                        <Trash2 size={14} className="text-rose-600 shrink-0" />
+                        <span>Delete Department</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Delete button */}
-              <button
-                onClick={() => handleDeleteSubject(subject.id, subject.name)}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition"
-                title="Delete subject"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="mt-4 flex items-center gap-2 text-xs text-slate-600">
+                <Users size={15} className="text-slate-400" />
+                <span className="font-medium">{subject.faculty_count} Assigned Faculty</span>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 text-slate-600 mb-6">
-              <Users size={18} className="text-slate-400" />
-              <span>{subject.faculty_count} Faculty</span>
-            </div>
-
-            <div className="flex justify-end">
+            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
               <Link
                 to={`/admin/faculty/${subject.id}`}
-                className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors group"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors group/link"
               >
-                View Faculty List
-                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                <span>View Faculty Members</span>
+                <ArrowRight size={14} className="group-hover/link:translate-x-0.5 transition-transform" />
               </Link>
             </div>
           </div>
         ))}
       </div>
-    </main>
+    </div>
   );
 };

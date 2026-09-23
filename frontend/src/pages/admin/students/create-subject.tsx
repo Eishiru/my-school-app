@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BookOpen, Users, GraduationCap, ArrowLeft } from "lucide-react";
+import { useCreateAdminSection } from "../../../hooks/useAdminData";
 
 export default function CreateSectionPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const createMutation = useCreateAdminSection();
+  const loading = createMutation.isPending;
 
   const [formData, setFormData] = useState({
     name: "",
@@ -19,40 +21,21 @@ export default function CreateSectionPage() {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
+    e.preventDefault();
 
-  try {
-    const token = localStorage.getItem("access");
+    try {
+      await createMutation.mutateAsync({
+        name: formData.name,
+        grade_level: formData.grade_level,
+      });
 
-    const bodyData = {
-      name: formData.name,
-      grade_level: formData.grade_level,
-    };
-
-    const res = await fetch("http://127.0.0.1:8000/api/sections/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(bodyData),
-    });
-
-    if (!res.ok) {
-      const error = await res.json();
-      throw error;
+      alert("Section created successfully!");
+      navigate(-1);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create section");
     }
-
-    alert("Section created successfully!");
-    navigate(-1);
-  } catch (err) {
-    console.error(err);
-    alert("Failed to create section");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">

@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ShieldCheck, Mail, User, ShieldAlert, Fingerprint, EyeOff, Eye } from "lucide-react";
+import { useCreateAdminUser } from "../../../../hooks/useAdminData";
 
 const CreateAdminAccountPage = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = location.state?.activeTab || "admin";
-  const [loading, setLoading] = useState(false);
+  const createMutation = useCreateAdminUser();
+  const loading = createMutation.isPending;
   
   // NEW: show/hide toggles
   const [showPassword, setShowPassword] = useState(false);
@@ -96,41 +98,21 @@ const CreateAdminAccountPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validatePasswords()) return;
-    setLoading(true);
 
     try {
-      const accessToken = localStorage.getItem("access");
-
-      const response = await fetch(
-        "http://127.0.0.1:8000/api/user/create/",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            email: formData.email,
-            password: formData.password,
-            school_id: formData.school_id,
-            role: formData.role,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to create account");
-      }
+      await createMutation.mutateAsync({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+        school_id: formData.school_id,
+        role: formData.role,
+      });
 
       alert("Account created successfully!");
       navigate("/admin/accounts", { state: { activeTab } });
     } catch (error: any) {
       alert(error.message);
-    } finally {
-      setLoading(false);
     }
   };
 

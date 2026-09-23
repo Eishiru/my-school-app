@@ -1,284 +1,240 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, MoreHorizontal, UserPlus, Trash2 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, MoreVertical, UserPlus, Trash2, ExternalLink } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import AddTeacherModal from "./AddTeacherModal";
-
-type AdvisoryClass = {
-  id: number;
-  section: string;
-  grade_level?: string | number;
-  adviser_name?: string;
-};
-
-interface Teacher {
-  id: number;
-  first_name: string;
-  last_name: string;
-  email: string;
-
-  // ✅ change department -> subjects (many-to-many)
-  subjects?: { id: number; name: string }[];
-
-  advisory: AdvisoryClass | null;
-}
-
-interface Subject {
-  id: number;
-  name: string;
-}
+import {
+  useAdminSubjectDetail,
+  useAdminSubjectTeachers,
+  useAdminTeachers,
+  useAssignTeacherToSubject,
+  useRemoveTeacherFromSubject,
+  AdminSubject,
+  AdminTeacher,
+} from "../../../hooks/useAdminData";
 
 export const FacultyList = () => {
-  // NOTE: route param name can stay "department" but we treat it as subjectId
+  const navigate = useNavigate();
   const { department } = useParams();
   const subjectId = Number(department);
-  const token = localStorage.getItem("access");
 
-  const [subject, setSubject] = useState<Subject | null>(null);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [availableTeachers, setAvailableTeachers] = useState<Teacher[]>([]);
+  const { data: subject = null } = useAdminSubjectDetail(subjectId);
+  const { data: teachers = [] } = useAdminSubjectTeachers(subjectId);
+  const { data: availableTeachers = [] } = useAdminTeachers();
+
+  const assignMutation = useAssignTeacherToSubject();
+  const removeMutation = useRemoveTeacherFromSubject();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
-  const fetchAssignedTeachers = async () => {
-    if (!token || !subjectId) return;
-    try {
-      const res = await fetch(
-        `http://127.0.0.1:8000/api/subjects/${subjectId}/teachers/`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const data = await res.json();
-      setTeachers(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setTeachers([]);
+  // Close menu on outside click or Escape
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-faculty-menu]")) {
+        setOpenMenuId(null);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenMenuId(null);
+      }
+    };
+
+    if (openMenuId !== null) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("keydown", handleKeyDown);
     }
-  };
-
-  /* ---------------- FETCH SUBJECT ---------------- */
-  useEffect(() => {
-    if (!token || !subjectId) return;
-
-    fetch(`http://127.0.0.1:8000/api/subjects/${subjectId}/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setSubject(data))
-      .catch((e) => {
-        console.error(e);
-        setSubject(null);
-      });
-  }, [subjectId, token]);
-
-  /* ---------------- FETCH ASSIGNED TEACHERS ---------------- */
-  useEffect(() => {
-    fetchAssignedTeachers();
-  }, [subjectId, token]);
-
-  /* ---------------- FETCH AVAILABLE TEACHERS ---------------- */
-  useEffect(() => {
-    if (!token) return;
-
-    fetch(`http://127.0.0.1:8000/api/teachers/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setAvailableTeachers(Array.isArray(data) ? data : []))
-      .catch((e) => {
-        console.error(e);
-        setAvailableTeachers([]);
-      });
-  }, [token]);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
 
   /* ---------------- FILTER AVAILABLE TEACHERS ---------------- */
   const filteredAvailableTeachers = useMemo(() => {
-  const assignedIds = new Set(teachers.map((t) => t.id));
+    const assignedIds = new Set(teachers.map((t) => t.id));
 
-  return availableTeachers
-    // remove already assigned to this subject
-    .filter((t) => !assignedIds.has(t.id))
-    // remove teachers that already have this subject in their subjects list
-    .filter((t) => {
-      if (!subject) return true;
-      const subs = Array.isArray(t.subjects) ? t.subjects : [];
-      return !subs.some((s) => s.id === subject.id); // ✅ reverse
-    });
-}, [availableTeachers, teachers, subject]);
+    return availableTeachers
+      .filter((t) => !assignedIds.has(t.id))
+      .filter((t) => {
+        if (!subject) return true;
+        const subs = Array.isArray(t.subjects) ? t.subjects : [];
+        return !subs.some((s) => s.id === subject.id);
+      });
+  }, [availableTeachers, teachers, subject]);
 
   /* ---------------- ASSIGN TEACHER ---------------- */
   const handleAssignTeacher = async (teacherId: number) => {
-    if (!token) return alert("Not authenticated");
-
-    const res = await fetch(
-      `http://127.0.0.1:8000/api/subjects/${subjectId}/assign-teacher/`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ teacher_id: teacherId }),
-      }
-    );
-
-    if (!res.ok) return alert("Failed to assign teacher");
-
-    await fetchAssignedTeachers();
-
-    // refresh available list
-    const res2 = await fetch(`http://127.0.0.1:8000/api/teachers/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data2 = await res2.json();
-    setAvailableTeachers(Array.isArray(data2) ? data2 : []);
-
-    setIsModalOpen(false);
+    try {
+      await assignMutation.mutateAsync({ subjectId, teacherId });
+      setIsModalOpen(false);
+    } catch {
+      alert("Failed to assign teacher");
+    }
   };
 
   /* ---------------- REMOVE TEACHER FROM SUBJECT ---------------- */
-  const handleRemove = async (teacherId: number) => {
-    if (!token) return alert("Not authenticated");
-
-    const res = await fetch(
-      `http://127.0.0.1:8000/api/subjects/${subjectId}/remove-teacher/`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ teacher_id: teacherId }),
-      }
+  const handleRemove = async (faculty: AdminTeacher) => {
+    const deptName = subject?.name ?? "this";
+    const ok = window.confirm(
+      `Remove ${faculty.first_name} ${faculty.last_name} from the ${deptName} department?`
     );
+    if (!ok) return;
 
-    if (!res.ok) return alert("Failed to remove teacher");
-
-    await fetchAssignedTeachers();
-
-    // refresh available list
-    const res2 = await fetch(`http://127.0.0.1:8000/api/teachers/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data2 = await res2.json();
-    setAvailableTeachers(Array.isArray(data2) ? data2 : []);
-
-    setOpenMenuId(null);
+    try {
+      await removeMutation.mutateAsync({ subjectId, teacherId: faculty.id });
+      setOpenMenuId(null);
+    } catch {
+      alert("Failed to remove teacher from department");
+    }
   };
 
   if (!subject) {
-    return <div className="p-10 text-center font-bold">Subject not found</div>;
+    return <div className="p-8 text-center text-xs text-slate-400">Subject department not found</div>;
   }
 
   return (
-    <div className="flex-1 p-3 bg-slate-50 min-h-screen relative">
+    <div className="space-y-6">
       {/* Navigation & Header */}
-      <Link
-        to="/admin/faculty"
-        className="inline-flex items-center text-slate-500 hover:text-indigo-600 mb-6 transition-colors group text-sm font-medium"
-      >
-        <ArrowLeft
-          size={18}
-          className="mr-2 group-hover:-translate-x-1 transition-transform"
-        />{" "}
-        Back to All Subjects
-      </Link>
-
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            {subject.name} Subject
-          </h1>
-          <p className="text-slate-500 text-sm">
-            Manage faculty members for this subject.
-          </p>
-        </div>
-
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all font-bold text-sm shadow-md shadow-indigo-100"
+      <div>
+        <Link
+          to="/admin/faculty"
+          className="inline-flex items-center text-slate-500 hover:text-indigo-600 transition-colors text-xs font-medium group mb-3"
         >
-          <UserPlus size={18} />
-          Add Faculty Member
-        </button>
+          <ArrowLeft
+            size={14}
+            className="mr-1.5 group-hover:-translate-x-1 transition-transform"
+          />
+          Back to All Departments
+        </Link>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              {subject.name} Department Faculty
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Manage instructors assigned to teach this curriculum subject
+            </p>
+          </div>
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors self-start sm:self-auto"
+          >
+            <UserPlus size={16} />
+            <span>Add Faculty Member</span>
+          </button>
+        </div>
       </div>
 
       {/* Table Container */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-y-hidden min-h-screen">
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden min-h-[320px]">
         <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50/50 border-b border-slate-100">
-              <th className="px-8 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                Full Name
+          <thead className="bg-slate-50/80 border-b border-slate-200">
+            <tr>
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Instructor Name
               </th>
-              <th className="px-8 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Email Address
               </th>
-              <th className="px-8 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Advisory Class
               </th>
-              <th className="px-8 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-right">
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">
                 Actions
               </th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-slate-100">
-            {teachers.map((faculty) => {
-              const advisoryLabel = faculty.advisory?.section ?? "N/A";
+            {teachers.map((faculty, index) => {
+              const advisoryLabel = faculty.advisory?.section ?? "None";
+              const initials =
+                (faculty.first_name?.charAt(0) || "") + (faculty.last_name?.charAt(0) || "");
 
               return (
                 <tr
                   key={faculty.id}
-                  className="hover:bg-slate-50 transition-colors group"
+                  className="hover:bg-slate-50/60 transition-colors group"
                 >
-                  <td className="px-8 py-5">
-                    <span className="font-bold text-slate-700">
-                      {faculty.last_name}
-                    </span>
-                    , {faculty.first_name}
+                  <td className="px-6 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold text-emerald-700 border border-emerald-100">
+                        {initials || "T"}
+                      </div>
+                      <span className="font-semibold text-sm text-slate-900">
+                        {faculty.last_name}, {faculty.first_name}
+                      </span>
+                    </div>
                   </td>
 
-                  <td className="px-8 py-5 text-slate-500 text-sm">
+                  <td className="px-6 py-3.5 text-xs text-slate-600">
                     {faculty.email}
                   </td>
 
-                  <td className="px-8 py-5">
+                  <td className="px-6 py-3.5">
                     <span
-                      className={`px-2 py-1 rounded text-[10px] font-bold ${
-                        advisoryLabel === "N/A"
-                          ? "bg-slate-100 text-slate-400"
-                          : "bg-indigo-100 text-indigo-700"
+                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${
+                        advisoryLabel === "None"
+                          ? "bg-slate-50 text-slate-400 border-slate-200"
+                          : "bg-indigo-50 text-indigo-700 border-indigo-100"
                       }`}
                     >
-                      {advisoryLabel}
+                      {advisoryLabel === "None" ? "No Advisory" : `Section ${advisoryLabel}`}
                     </span>
                   </td>
 
-                  <td className="px-8 py-5 text-right relative">
-                    <button
-                      onClick={() =>
-                        setOpenMenuId(openMenuId === faculty.id ? null : faculty.id)
-                      }
-                      className="p-2 hover:bg-white hover:shadow-sm border border-transparent hover:border-slate-200 rounded-lg transition-all"
-                    >
-                      <MoreHorizontal size={20} className="text-slate-400" />
-                    </button>
+                  <td className="px-6 py-3.5 text-right">
+                    <div className="relative inline-block text-left" data-faculty-menu>
+                      <button
+                        onClick={() =>
+                          setOpenMenuId(openMenuId === faculty.id ? null : faculty.id)
+                        }
+                        className={`p-1.5 rounded-lg border transition-colors ${
+                          openMenuId === faculty.id
+                            ? "border-slate-300 bg-slate-100 text-slate-800 shadow-inner"
+                            : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                        }`}
+                        aria-label="Open actions"
+                      >
+                        <MoreVertical size={16} />
+                      </button>
 
-                    {openMenuId === faculty.id && (
-                      <div>
+                      {openMenuId === faculty.id && (
                         <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setOpenMenuId(null)}
-                        />
-                        <div className="absolute right-0 mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-xl z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                          className={`absolute right-0 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-30 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 ${
+                            index >= teachers.length - 2 && teachers.length > 2
+                              ? "bottom-full mb-1.5 origin-bottom-right"
+                              : "top-full mt-1.5 origin-top-right"
+                          }`}
+                        >
                           <button
-                            onClick={() => handleRemove(faculty.id)}
-                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 font-medium"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              navigate("/admin/accounts", { state: { activeTab: "teacher" } });
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
                           >
-                            <Trash2 size={14} /> Remove from Subject
+                            <ExternalLink size={14} className="text-indigo-600 shrink-0" />
+                            <span>View in Accounts</span>
+                          </button>
+
+                          <div className="my-1 border-t border-slate-100" />
+
+                          <button
+                            onClick={() => handleRemove(faculty)}
+                            className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 font-medium transition-colors"
+                          >
+                            <Trash2 size={14} className="text-rose-600 shrink-0" />
+                            <span>Remove from Department</span>
                           </button>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -286,8 +242,8 @@ export const FacultyList = () => {
 
             {teachers.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-8 py-10 text-center text-slate-500">
-                  No faculty assigned to this subject yet.
+                <td colSpan={4} className="px-6 py-12 text-center text-xs text-slate-400">
+                  No faculty assigned to this subject department yet.
                 </td>
               </tr>
             )}

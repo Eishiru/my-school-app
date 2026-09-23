@@ -20,7 +20,7 @@ const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
   onNavigate,
 }) => {
   return (
-    <ul>
+    <ul className="space-y-1">
       {links.map(({ name, to, Icon }) => (
         <li key={to}>
           <NavLink
@@ -28,25 +28,27 @@ const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
             end={name === "Dashboard"}
             onClick={onNavigate}
             className={({ isActive }) =>
-              `group relative flex w-full items-center gap-4 rounded-xl px-4 py-5 text-left text-sm font-semibold transition ${
+              `group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-all duration-150 ${
                 isActive
-                  ? "bg-[#f1efff] text-[#5545ef]"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                  ? "bg-indigo-50/80 text-indigo-700 font-semibold"
+                  : "text-slate-600 font-medium hover:bg-slate-100/70 hover:text-slate-900"
               }`
             }
           >
             {({ isActive }) => (
               <>
                 {isActive && (
-                  <span className="absolute -left-2 h-7 w-1 rounded-r-full bg-[#6c5cf6]" />
+                  <span className="absolute -left-3 h-5 w-1 rounded-r-full bg-indigo-600" />
                 )}
 
                 <Icon
-                  className="size-5"
-                  strokeWidth={2.1}
+                  className={`h-4 w-4 shrink-0 transition-colors ${
+                    isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"
+                  }`}
+                  strokeWidth={2}
                 />
 
-                <span>{name}</span>
+                <span className="truncate">{name}</span>
               </>
             )}
           </NavLink>

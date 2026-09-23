@@ -1,166 +1,90 @@
-import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
-import axios from "axios";
-import { Search, Clock, Filter } from "lucide-react";
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Search,
+  Clock,
+  Filter,
+  ClipboardList,
+  CheckCircle2,
+  Eye,
+  BookOpen,
+  ArrowRight,
+  AlertCircle,
+} from 'lucide-react';
+import { useStudentQuizzes, useStudentQuizAttempts } from '../../../hooks/useStudentQuizzes';
+import { StudentQuiz, StudentQuizAttempt } from '../../../types/studentTypes';
 
-interface Quiz {
-  id: number;
-  quiz_id: string;
-  title: string;
-  subject_name: string;
-  teacher_name: string;
-  open_time: string;
-  close_time: string;
-  time_limit: number;
-  total_points: number;
-  question_count: number;
-  is_open: boolean;
-  is_upcoming: boolean;
-  is_closed: boolean;
-  user_attempts: number;
-  allow_multiple_attempts: boolean;
-}
-
-interface QuizAttempt {
-  id: number;
-  quiz: number;
-  score: number | null;
-  total: number | null;
-  percentage: number | null;
-  submitted_at?: string;
-}
-
-type Tab = "ALL" | "OPEN" | "UPCOMING" | "CLOSED";
+type Tab = 'ALL' | 'OPEN' | 'UPCOMING' | 'CLOSED';
 
 function badge(status: Tab) {
   const cls =
-    status === "OPEN"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-      : status === "UPCOMING"
-      ? "bg-indigo-50 text-indigo-700 border-indigo-100"
-      : status === "CLOSED"
-      ? "bg-slate-50 text-slate-600 border-slate-200"
-      : "bg-slate-50 text-slate-700 border-slate-200";
+    status === 'OPEN'
+      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+      : status === 'UPCOMING'
+      ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20'
+      : status === 'CLOSED'
+      ? 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'
+      : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200';
 
-  return `px-3 py-1 rounded-lg text-[11px] font-black uppercase tracking-widest border ${cls}`;
+  return `inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${cls}`;
 }
 
-function statusOf(q: Quiz): Tab {
-  if (q.is_open) return "OPEN";
-  if (q.is_upcoming) return "UPCOMING";
-  if (q.is_closed) return "CLOSED";
-  return "ALL";
+function statusOf(q: StudentQuiz): Tab {
+  if (q.is_open) return 'OPEN';
+  if (q.is_upcoming) return 'UPCOMING';
+  if (q.is_closed) return 'CLOSED';
+  return 'ALL';
 }
 
 function fmt(dt?: string) {
-  if (!dt) return "—";
+  if (!dt) return '—';
   const d = new Date(dt);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString();
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export default function StudentQuizList() {
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const {
+    data: quizzes = [],
+    isLoading: loadingQuizzes,
+    isError: isQuizError,
+    error: quizError,
+    refetch: refetchQuizzes,
+  } = useStudentQuizzes();
+
+  const {
+    data: attempts = [],
+    isLoading: loadingAttempts,
+  } = useStudentQuizAttempts();
 
   // UI state
-  const [tab, setTab] = useState<Tab>("ALL");
-  const [query, setQuery] = useState("");
+  const [tab, setTab] = useState<Tab>('ALL');
+  const [query, setQuery] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState<string>('ALL');
 
-  const base = "http://127.0.0.1:8000/api";
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await Promise.all([fetchQuizzes(), fetchAttempts()]);
-      setLoading(false);
-    })();
-    let polling = false;
-    const refresh = async () => {
-      if (polling || document.hidden) return;
-      polling = true;
-      try { await fetchQuizzes(); } finally { polling = false; }
-    };
-    const timer = window.setInterval(() => void refresh(), 5000);
-    window.addEventListener("focus", refresh);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-    };
-  }, []);
-
-  const getToken = () => {
-    const access = localStorage.getItem("access");
-    if (access) return access;
-    const savedUser = localStorage.getItem("user");
-    return savedUser ? JSON.parse(savedUser).token : null;
-  };
-
-  const fetchQuizzes = async () => {
-    setLoadError(null);
-    try {
-      const token = getToken();
-      const res = await axios.get(`${base}/student/quizzes/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      let data = res.data;
-      const loaded: Quiz[] = [];
-      while (true) {
-        if (Array.isArray(data)) {
-          loaded.push(...data);
-          break;
-        }
-        if (!data || !Array.isArray(data.results)) {
-          throw new Error("Unexpected quiz response. Please try again.");
-        }
-        loaded.push(...data.results);
-        if (!data.next) break;
-        const next = new URL(data.next, `${base}/student/quizzes/`);
-        const api = new URL(base, window.location.origin);
-        if (next.origin !== api.origin || next.pathname !== `${api.pathname}/student/quizzes/`) {
-          throw new Error("Unexpected quiz pagination link.");
-        }
-        data = (await axios.get(next.toString(), {
-          headers: { Authorization: `Bearer ${token}` },
-        })).data;
-      }
-      setQuizzes(loaded);
-    } catch (e) {
-      console.error("Error fetching quizzes:", e);
-      setLoadError(
-        axios.isAxiosError(e) && e.response?.status === 401
-          ? "Your session has expired. Please sign in again."
-          : axios.isAxiosError(e) && e.response?.status === 403
-            ? "This account cannot access student quizzes."
-            : "Unable to load quizzes. Check your connection and try again."
-      );
-      setQuizzes([]);
-    }
-  };
-
-  const fetchAttempts = async () => {
-    try {
-      const token = getToken();
-      const res = await axios.get(`${base}/student/quiz-attempts/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setAttempts(Array.isArray(res.data) ? res.data : res.data?.results ?? []);
-    } catch (e) {
-      console.error("Error fetching attempts:", e);
-      setAttempts([]);
-    }
-  };
+  const subjects = useMemo(() => {
+    const set = new Set<string>();
+    quizzes.forEach((q) => {
+      if (q.subject_name) set.add(q.subject_name);
+    });
+    return Array.from(set).sort();
+  }, [quizzes]);
 
   const latestAttemptByQuizId = useMemo(() => {
-    const map = new Map<number, QuizAttempt>();
+    const map = new Map<number, StudentQuizAttempt>();
     const sorted = [...attempts].sort((a, b) => {
       const ta = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
       const tb = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
       return tb - ta;
     });
-    for (const a of sorted) if (!map.has(a.quiz)) map.set(a.quiz, a);
+    for (const a of sorted) {
+      if (!map.has(a.quiz)) map.set(a.quiz, a);
+    }
     return map;
   }, [attempts]);
 
@@ -169,12 +93,14 @@ export default function StudentQuizList() {
 
     let list = [...quizzes];
 
-    // tab filter
-    if (tab !== "ALL") {
+    if (tab !== 'ALL') {
       list = list.filter((x) => statusOf(x) === tab);
     }
 
-    // search filter
+    if (selectedSubject !== 'ALL') {
+      list = list.filter((x) => x.subject_name === selectedSubject);
+    }
+
     if (q) {
       list = list.filter((x) => {
         const hay = `${x.title} ${x.subject_name} ${x.teacher_name}`.toLowerCase();
@@ -182,7 +108,6 @@ export default function StudentQuizList() {
       });
     }
 
-    // sort: soonest close/open first
     list.sort((a, b) => {
       const da = new Date(a.close_time || a.open_time).getTime();
       const db = new Date(b.close_time || b.open_time).getTime();
@@ -190,80 +115,110 @@ export default function StudentQuizList() {
     });
 
     return list;
-  }, [quizzes, tab, query]);
+  }, [quizzes, tab, selectedSubject, query]);
 
-  const canTakeQuiz = (quiz: Quiz) => {
+  const canTakeQuiz = (quiz: StudentQuiz) => {
     if (!quiz.is_open) return false;
     if (!quiz.allow_multiple_attempts && quiz.user_attempts > 0) return false;
     return true;
   };
 
-  // console.log(quizzes);
-  const renderScoreChip = (quiz: Quiz) => {
+  const renderScoreChip = (quiz: StudentQuiz) => {
     const a = latestAttemptByQuizId.get(quiz.id);
-    if (!a) return null;
+    if (!a && quiz.user_attempts === 0) return null;
 
-    const score = a.score;
-    const total = a.total ?? quiz.total_points;
-    const percent =
-      a.percentage != null
-        ? a.percentage
-        : score != null && total
-        ? (score / total) * 100
-        : null;
+    if (a?.status === 'SUBMITTED' || a?.requires_manual_grading) {
+      return (
+        <span className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 ring-1 ring-amber-600/20 text-amber-700">
+          <Clock size={11} />
+          Pending Grading
+        </span>
+      );
+    }
+
+    if (a) {
+      const score = a.score;
+      const total = a.total ?? a.total_points ?? quiz.total_points;
+      const percent =
+        a.percentage != null
+          ? a.percentage
+          : score != null && total
+          ? (score / total) * 100
+          : null;
+
+      return (
+        <span className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 ring-1 ring-emerald-600/20 text-emerald-700">
+          <CheckCircle2 size={11} />
+          {score == null || total == null ? 'Submitted' : `${score}/${total}`}
+          {percent != null && ` (${percent.toFixed(0)}%)`}
+        </span>
+      );
+    }
 
     return (
-      <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700">
-        {score == null || total == null ? "Last: —" : `Last: ${score}/${total}`}
-        {percent == null ? "" : ` (${percent.toFixed(1)}%)`}
+      <span className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 ring-1 ring-emerald-600/20 text-emerald-700">
+        <CheckCircle2 size={11} />
+        Attempted
       </span>
     );
   };
 
-  if (loading) return <div className="p-8">Loading quizzes...</div>;
+  if (loadingQuizzes && quizzes.length === 0) {
+    return (
+      <div className="flex h-72 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-500">Loading student activities...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4  bg-slate-50 min-h-screen">
-      <div className=" mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">
-              Activities
-            </h1>
-            <p className="text-slate-500 font-medium mt-1">
-              Filter and take quizzes for your enrolled subjects.
-            </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Assessments
+            </span>
           </div>
-
-          {/* Search */}
-          <div className="w-full md:w-[380px]">
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
-              <Search size={18} className="text-slate-400" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search quiz, subject, teacher…"
-                className="w-full outline-none text-sm font-semibold text-slate-800 placeholder:text-slate-400"
-              />
-            </div>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Assigned Activities
+          </h1>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Take online quizzes, review submitted answers, and track your performance records.
+          </p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="inline-flex items-center gap-2 text-xs font-black text-slate-500 uppercase tracking-widest">
-            <Filter size={14} /> Status
+        {/* Search */}
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search activity or subject..."
+            className="w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 shadow-xs outline-none transition-colors hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+      </div>
+
+      {/* Filter Tabs & Subject Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 uppercase tracking-wider mr-2">
+            <Filter size={13} /> Filter:
           </span>
 
-          {(["ALL", "OPEN", "UPCOMING", "CLOSED"] as Tab[]).map((t) => (
+          {(['ALL', 'OPEN', 'UPCOMING', 'CLOSED'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition ${
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
                 tab === t
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
               }`}
             >
               {t}
@@ -271,105 +226,154 @@ export default function StudentQuizList() {
           ))}
         </div>
 
-        {loadError && (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-            <p>{loadError}</p>
-            <button type="button" onClick={() => void fetchQuizzes()} className="mt-2 font-bold underline">
-              Retry
-            </button>
+        {/* Subject Filter Dropdown */}
+        {subjects.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-500 flex items-center gap-1">
+              <BookOpen size={13} /> Subject:
+            </span>
+            <select
+              value={selectedSubject}
+              onChange={(e) => setSelectedSubject(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs outline-none focus:border-indigo-500 cursor-pointer"
+            >
+              <option value="ALL">All Subjects ({quizzes.length})</option>
+              {subjects.map((sub) => (
+                <option key={sub} value={sub}>
+                  {sub}
+                </option>
+              ))}
+            </select>
           </div>
         )}
+      </div>
 
-        {/* List */}
-        <div className="grid gap-4">
-          {loadError ? null : filtered.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-2xl border border-slate-100 shadow-sm">
-              <p className="text-slate-500 font-bold">{quizzes.length === 0 ? "No published quizzes are available for your section yet." : "No quizzes match your filters."}</p>
-            </div>
-          ) : (
-            filtered.map((quiz) => {
-              const s = statusOf(quiz);
-              const takeable = canTakeQuiz(quiz);
+      {isQuizError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 text-xs font-medium text-rose-700">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} />
+            <p>{(quizError as Error)?.message || 'Unable to load quizzes.'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refetchQuizzes()}
+            className="mt-2 font-semibold underline cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
-              return (
-                <div
-                  key={quiz.id}
-                  className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition"
-                >
-                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    {/* Left */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h2 className="text-lg md:text-xl font-black text-slate-900 truncate">
-                          {quiz.title}
-                        </h2>
-                        <span className={badge(s)}>{s}</span>
-                        {renderScoreChip(quiz)}
-                      </div>
+      {/* Quiz List Cards */}
+      <div className="grid gap-3">
+        {filtered.length === 0 ? (
+          <div className="rounded-xl border border-slate-200/80 bg-white p-12 text-center shadow-xs">
+            <ClipboardList className="mx-auto h-8 w-8 text-slate-300" />
+            <h3 className="mt-2 text-sm font-semibold text-slate-900">
+              {quizzes.length === 0
+                ? 'No activities published for your section yet.'
+                : 'No activities match your current filter.'}
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Check back later or adjust your filter options.
+            </p>
+          </div>
+        ) : (
+          filtered.map((quiz) => {
+            const s = statusOf(quiz);
+            const takeable = canTakeQuiz(quiz);
+            const hasAttempt = (quiz.user_attempts && quiz.user_attempts > 0) || latestAttemptByQuizId.has(quiz.id);
 
-                      <div className="mt-2 text-sm text-slate-600 space-y-1">
-                        <div className="font-bold text-slate-800">
-                          {quiz.subject_name} • <span className="text-slate-500">{quiz.teacher_name}</span>
-                        </div>
-                        <div>
-                          Questions: <span className="font-bold">{quiz.question_count}</span> • Points:{" "}
-                          <span className="font-bold">{quiz.total_points}</span> • Time:{" "}
-                          <span className="font-bold">{quiz.time_limit}m</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-500">
-                        <span className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
-                          <Clock size={14} />
-                          {quiz.is_upcoming ? `Opens: ${fmt(quiz.open_time)}` : `Closes: ${fmt(quiz.close_time)}`}
-                        </span>
-
-                        {quiz.user_attempts > 0 ? (
-                          <span className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
-                            Attempts: {quiz.user_attempts}
-                            {!quiz.allow_multiple_attempts ? " (limit reached)" : ""}
-                          </span>
-                        ) : null}
-                      </div>
+            return (
+              <div
+                key={quiz.id}
+                className="rounded-xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs transition-all hover:border-slate-300"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  {/* Info */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-sm font-bold text-slate-900 truncate">
+                        {quiz.title}
+                      </h2>
+                      <span className={badge(s)}>{s}</span>
+                      {renderScoreChip(quiz)}
                     </div>
 
-                    {/* Right CTA */}
-                    <div className="shrink-0 flex flex-col gap-2 md:items-end">
-                      {takeable ? (
-                        <Link
-                          to={`/student/activities/${quiz.id}/take`}
-                          className="px-6 py-2.5 rounded-xl bg-slate-900 text-white font-black text-sm hover:bg-indigo-600 text-center"
-                        >
-                          Take Quiz
-                        </Link>
-                      ) : quiz.is_upcoming ? (
-                        <div className="px-6 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-black text-sm text-center cursor-not-allowed">
-                          Not Yet Open
-                        </div>
-                      ) : quiz.is_closed ? (
-                        <div className="px-6 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-black text-sm text-center cursor-not-allowed">
-                          Closed
-                        </div>
-                      ) : (
-                        <div className="px-6 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-black text-sm text-center cursor-not-allowed">
-                          Taken
-                        </div>
-                      )}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span className="font-semibold text-slate-700">{quiz.subject_name}</span>
+                      <span>•</span>
+                      <span>{quiz.teacher_name}</span>
+                      <span>•</span>
+                      <span className="font-mono">
+                        {quiz.question_count} items ({quiz.total_points} pts)
+                      </span>
+                      <span>•</span>
+                      <span className="font-mono">
+                        {quiz.time_limit ? `${quiz.time_limit} mins` : 'No limit'}
+                      </span>
+                    </div>
 
-                      {/* <Link
-                        to="/student/activities"
-                        className="text-xs font-black text-indigo-600 hover:underline inline-flex items-center gap-1"
-                      >
-                        View details <span aria-hidden>→</span>
-                      </Link> */}
+                    <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                      <span className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-500">
+                        <Clock size={12} className="text-slate-400" />
+                        {quiz.is_upcoming ? `Opens: ${fmt(quiz.open_time)}` : `Closes: ${fmt(quiz.close_time)}`}
+                      </span>
+
+                      {quiz.user_attempts > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            Attempts: {quiz.user_attempts}
+                            {!quiz.allow_multiple_attempts ? ' (max reached)' : ''}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
+
+                  {/* Actions */}
+                  <div className="shrink-0 self-start sm:self-center flex items-center gap-2 flex-wrap">
+                    {/* Review Button if student submitted an attempt */}
+                    {hasAttempt && (
+                      <Link
+                        to={`/student/activities/${quiz.id}/review`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                      >
+                        <Eye size={13} className="text-slate-500" />
+                        Review
+                      </Link>
+                    )}
+
+                    {takeable ? (
+                      <Link
+                        to={`/student/activities/${quiz.id}/take`}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors"
+                      >
+                        <span>{hasAttempt ? 'Retake' : 'Take Quiz'}</span>
+                        <ArrowRight size={13} />
+                      </Link>
+                    ) : quiz.is_upcoming ? (
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium cursor-not-allowed">
+                        Scheduled
+                      </span>
+                    ) : quiz.is_closed ? (
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium cursor-not-allowed">
+                        Closed
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium cursor-not-allowed">
+                        Completed
+                      </span>
+                    )}
+                  </div>
                 </div>
-              );
-            })
-          )}
-        </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
 }
+

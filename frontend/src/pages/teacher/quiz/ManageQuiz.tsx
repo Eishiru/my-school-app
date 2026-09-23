@@ -143,33 +143,28 @@ function StatCard({
   label,
   value,
   hint,
+  accent = "bg-indigo-50 text-indigo-600 border-indigo-100",
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   hint: string;
+  accent?: string;
 }) {
   return (
-    <div className="manage-stat relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-              {label}
-            </div>
-
-            <div className="mt-1 text-2xl font-black tracking-tight text-slate-900">
-              {value}
-            </div>
-
-            <div className="mt-1 text-xs text-slate-500">
-              {hint}
-            </div>
-          </div>
-
-          <div className="h-9 w-9 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
-            {icon}
-          </div>
+    <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-xs hover:border-indigo-200 transition-all">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 block">
+            {label}
+          </span>
+          <p className="mt-1 text-xl font-bold tracking-tight text-slate-900 font-mono">
+            {value}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-400">{hint}</p>
+        </div>
+        <div className={`p-2 rounded-xl border ${accent}`}>
+          {icon}
         </div>
       </div>
     </div>
@@ -1161,25 +1156,24 @@ export default function ManageQuiz() {
                   '/teacher/activities'
                 )
               }
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
             >
               <ArrowLeft
-                size={16}
+                size={14}
               />
-
-              Back
+              <span>Back</span>
             </button>
 
             <div className="min-w-0">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
                 Manage Activity
-              </div>
+              </span>
 
-              <h1 className="truncate text-xl md:text-2xl font-black tracking-tight text-slate-900">
+              <h1 className="truncate text-xl font-bold tracking-tight text-slate-900">
                 {quiz.title}
               </h1>
 
-              <div className="mt-0.5 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+              <div className="mt-0.5 text-xs text-slate-500 font-medium">
                 {quiz.subject_name ||
                   'Subject'}{' '}
                 • Quiz ID:{' '}
@@ -1191,28 +1185,26 @@ export default function ManageQuiz() {
             <div className="ml-auto flex items-center gap-2">
               <Link
                 to={`/teacher/activities/${quizId}/item-analysis`}
-                className="hidden md:inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
+                className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
               >
                 <BarChart3
-                  size={16}
+                  size={14}
                 />
-
-                Item Analysis
+                <span>Item Analysis</span>
               </Link>
 
               {isGroupActivity ? <button type="button" onClick={() => setActiveTab('group-grading')}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white hover:bg-indigo-600">
-                <Pencil size={16} /> Group Grading
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors">
+                <Pencil size={14} /> <span>Group Grading</span>
               </button> : (
               <Link
                 to={`/teacher/activities/${quizId}/grading`}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600 transition"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors"
               >
                 <Pencil
-                  size={16}
+                  size={14}
                 />
-
-                Manual Grading
+                <span>Manual Grading</span>
               </Link>
               )}
             </div>
@@ -1228,21 +1220,20 @@ export default function ManageQuiz() {
                 )
               }
               className={[
-                'rounded-2xl px-4 py-2.5 text-sm font-black transition border',
+                'rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors',
                 activeTab ===
                 'questions'
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 hover:text-slate-900',
               ].join(
                 ' '
               )}
             >
-              <span className="inline-flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5">
                 <Layers
-                  size={16}
+                  size={14}
                 />
-
-                Questions
+                <span>Questions</span>
               </span>
             </button>
 
@@ -1254,29 +1245,28 @@ export default function ManageQuiz() {
                 )
               }
               className={[
-                'rounded-2xl px-4 py-2.5 text-sm font-black transition border',
+                'rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors',
                 activeTab ===
                 'settings'
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 hover:text-slate-900',
               ].join(
                 ' '
               )}
             >
-              <span className="inline-flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5">
                 <CalendarClock
-                  size={16}
+                  size={14}
                 />
-
-                Schedule & Status
+                <span>Schedule & Status</span>
               </span>
             </button>
             {isGroupActivity && <button type="button" onClick={() => setActiveTab('groups')}
-              className={`rounded-xl border px-4 py-2 text-sm font-black ${activeTab === 'groups' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
+              className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${activeTab === 'groups' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 hover:text-slate-900'}`}>
               Groups
             </button>}
             {isGroupActivity && <button type="button" onClick={() => setActiveTab('group-grading')}
-              className={`rounded-xl border px-4 py-2 text-sm font-black ${activeTab === 'group-grading' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
+              className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${activeTab === 'group-grading' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 hover:text-slate-900'}`}>
               Group Grading
             </button>}
           </div>
