@@ -150,6 +150,11 @@ class Student(models.Model):
         ("GRADE_10", "Grade 10"),
     ]
 
+    GENDER_CHOICES = [
+        ("MALE", "Male"),
+        ("FEMALE", "Female"),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="student_profile")
     grade_level=models.CharField(
         max_length=20,
@@ -162,6 +167,24 @@ class Student(models.Model):
         blank=True,
         related_name="students"
     )
+    gender = models.CharField(
+        max_length=10,
+        choices=GENDER_CHOICES,
+        null=True,
+        blank=True
+    )
+    birthdate = models.DateField(
+        null=True,
+        blank=True
+    )
+
+    @property
+    def age(self):
+        if not self.birthdate:
+            return None
+        from datetime import date
+        today = date.today()
+        return today.year - self.birthdate.year - ((today.month, today.day) < (self.birthdate.month, self.birthdate.day))
 
     def __str__(self):
         return f"Student: {self.user.school_id} ({self.grade_level})"
@@ -476,6 +499,7 @@ class QuizAttempt(models.Model):
     group = models.ForeignKey(QuizActivityGroup, on_delete=models.CASCADE, null=True, blank=True, related_name='grade_credits')
     started_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    time_spent = models.PositiveIntegerField(default=0, help_text="Time spent in seconds")
     score = models.FloatField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IN_PROGRESS')
     

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import SideBar from "./sidebar/Sidebar";
+import Topbar from "./Topbar";
 
 export default function Layout() {
-
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -12,7 +12,6 @@ export default function Layout() {
       ? window.matchMedia("(min-width: 1024px)").matches
       : true
   );
-
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -27,31 +26,22 @@ export default function Layout() {
       }
     };
 
-
     mql.addEventListener("change", handler);
 
     return () => {
       mql.removeEventListener("change", handler);
     };
-
   }, []);
-
-
 
   // close drawer after navigation on mobile
   useEffect(() => {
-
     if (!isDesktop) {
       setSidebarOpen(false);
     }
-
   }, [location.pathname, isDesktop]);
 
-
-
   return (
-
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased">
       <SideBar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -59,14 +49,18 @@ export default function Layout() {
         isDesktop={isDesktop}
       />
 
-      <main className={`min-w-0 flex-1 min-h-0 overflow-y-auto bg-slate-50 ${isDesktop ? "px-4 py-2" : "px-4 pt-15 pb-6"}`}>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Topbar
+          onOpenMobileSidebar={() => setSidebarOpen(true)}
+          isDesktop={isDesktop}
+        />
 
-        <Outlet />
-
-      </main>
-
-
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50/60 p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
-
   );
 }

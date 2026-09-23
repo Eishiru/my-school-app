@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addQuizQuestion, applySemesterWeights, batchRecordQuizScores, createTeacherQuiz, deleteQuizQuestion, deleteSemesterGrade, deleteSubjectFile, deleteTeacherQuiz, deleteTeacherQuizActivity, deleteTeacherSubject, generateQuizAIAnalysis, getAdvisoryStudents, getQuizItemAnalysis, getQuizQuestions, getQuizStudentSubmissions, getRecentQuizGrades, getSemesterGrades, getStudentDetail, getStudentSemesterSummary, getSubjectFiles, getTeacherAdvisoryDetail, getTeacherQuiz, getTeacherQuizAttempts, getTeacherQuizzes, getTeacherSubject, getTeacherSubjectActivities, getTeacherSubjectGrades, getTeacherSubjectQuizzes, getTeacherSubjects, getTeacherSubjectStudents, getTeacherSubjectSubmissionDetail, getTeacherSubmissionsSummary, gradeQuizAnswer, saveSemesterGrade, updateQuizQuestion, updateQuizStatus, updateQuizTimes, uploadSubjectFile } from "../api/teacherApi";
+import { addQuizQuestion, applySemesterWeights, batchRecordQuizScores, createTeacherQuiz, deleteQuizQuestion, deleteSemesterGrade, deleteSubjectFile, deleteTeacherQuiz, deleteTeacherQuizActivity, deleteTeacherSubject, generateQuizAIAnalysis, getAdvisoryStudents, getQuizItemAnalysis, getQuizQuestions, getQuizStudentSubmissions, getRecentQuizGrades, getSemesterGrades, getStudentDetail, getStudentSemesterSummary, getSubjectFiles, getTeacherAdvisoryDetail, getTeacherPendingGrading, getTeacherQuiz, getTeacherQuizAttempts, getTeacherQuizzes, getTeacherSubject, getTeacherSubjectActivities, getTeacherSubjectGrades, getTeacherSubjectQuizzes, getTeacherSubjects, getTeacherSubjectStudents, getTeacherSubjectSubmissionDetail, getTeacherSubmissionsSummary, gradeQuizAnswer, saveSemesterGrade, updateQuizQuestion, updateQuizStatus, updateQuizTimes, uploadSubjectFile } from "../api/teacherApi";
 import { Semester, TeacherQuiz } from "../types/teacherTypes";
 
 export function useTeacherSubjects() {
@@ -239,6 +239,21 @@ export function useTeacherQuizzes() {
     queryFn: getTeacherQuizzes,
 
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useTeacherPendingGrading() {
+  return useQuery({
+    queryKey: [
+      "teacher",
+      "quizzes",
+      "pending-grading",
+    ],
+
+    queryFn: getTeacherPendingGrading,
+
+    staleTime: 30 * 1000,
+    refetchInterval: 15 * 1000,
   });
 }
 

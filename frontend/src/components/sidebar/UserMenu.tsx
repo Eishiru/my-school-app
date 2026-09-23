@@ -98,24 +98,20 @@ const UserMenu: React.FC<UserMenuProps> = ({
 
       {open && (
         <div
-          className={`fixed z-999 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-2xl ${
-            isDesktop
-              ? "bottom-20 left-2 w-60"
-              : "right-4 top-16 w-40"
-          }`}
+          className="absolute bottom-full left-0 mb-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100"
           onMouseDown={(event) => event.stopPropagation()}
         >
+          <div className="px-3 py-2 border-b border-slate-100">
+            <p className="text-xs font-semibold text-slate-800 truncate">{user?.first_name} {user?.last_name}</p>
+            <p className="text-[11px] text-slate-500 truncate">{user?.email || "Authenticated"}</p>
+          </div>
           <button
             type="button"
             onClick={onLogout}
-            className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-red-600 transition-colors duration-150 hover:bg-red-50 focus:bg-red-50 focus:outline-none active:bg-red-100"
+            className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 focus:outline-none"
           >
-            <span>Logout</span>
-
-            <LogOut
-              size={17}
-              strokeWidth={2}
-            />
+            <span>Sign Out</span>
+            <LogOut size={14} />
           </button>
         </div>
       )}

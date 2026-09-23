@@ -2,7 +2,17 @@ import React, { useMemo, useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 
-import { AlertCircle, ChevronDown, ChevronUp, Download } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Search,
+  X,
+  Calendar,
+  Users,
+  FileText,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { generateBanigPDF } from "./BanigExportPage";
 import {
@@ -10,6 +20,8 @@ import {
   useStudentSemesterSummary,
   useTeacherAdvisoryDetail,
 } from "../../../hooks/useTeacherSubjects";
+import { useActiveAcademicTerm } from "../../../hooks/useAdminData";
+import { formatGradeLevel, formatSectionName } from "./ExportReportCard";
 
 import type {
   AdvisoryStudent,
@@ -91,6 +103,8 @@ export default function AdvisoryClass() {
   const teacherId = getCurrentTeacherId();
   const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const { data: activeTerm } = useActiveAcademicTerm();
 
   /* --------------------------
      Teacher
@@ -115,6 +129,17 @@ export default function AdvisoryClass() {
     isError: studentsError,
     error: studentsErrorData,
   } = useAdvisoryStudents(sectionId);
+
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((student) => {
+      const name = `${student.first_name} ${student.last_name}`.toLowerCase();
+      const id = String(student.school_id || "").toLowerCase();
+      const email = String(student.email || "").toLowerCase();
+      return name.includes(q) || id.includes(q) || email.includes(q);
+    });
+  }, [students, searchQuery]);
 
   const loading = teacherLoading || studentsLoading;
 
@@ -174,213 +199,203 @@ export default function AdvisoryClass() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <section className="p-4 md:p-6">
-        <div className="mx-auto max-w-8xl">
-          {/* =========================
-              Header
-          ========================= */}
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            {header.title}
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {students.length} Students Enrolled {teacher ? `• Class Adviser: ${teacher.first_name} ${teacher.last_name}` : ""}
+          </p>
+        </div>
 
-          <header className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-            <div>
-              <span className="inline-flex px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wider rounded">
-                Advisory Class
-              </span>
+        <button
+          type="button"
+          disabled={exporting || students.length === 0}
+          onClick={async () => {
+            try {
+              setExporting(true);
+              await generateBanigPDF({
+                queryClient,
+                teacher,
+                students,
+                schoolYear: activeTerm?.school_year?.name,
+              });
+            } finally {
+              setExporting(false);
+            }
+          }}
+          className="inline-flex items-center gap-2 self-start md:self-auto px-4 py-2 bg-white border border-slate-200/80 text-slate-700 text-xs font-semibold rounded-lg shadow-xs hover:bg-slate-50 disabled:opacity-50 transition-colors"
+        >
+          <Download size={14} className="text-indigo-600" />
+          <span>{exporting ? "Generating Banig PDF..." : "Export Banig (Summary)"}</span>
+        </button>
+      </div>
 
-              <h1 className="mt-3 text-3xl md:text-4xl font-black text-slate-900 tracking-tight">
-                {header.title}
-              </h1>
+      {/* Search & Filter Bar */}
+      {teacher?.advisory && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              size={15}
+            />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search students by name, LRN, or email..."
+              className="w-full rounded-lg border border-slate-200/80 bg-white py-2 pl-9 pr-9 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                aria-label="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
 
-              <p className="text-slate-500 font-medium mt-1">
-                {header.subtitle}
-              </p>
+          <div className="text-xs font-medium text-slate-500">
+            Showing {filteredStudents.length} of {students.length} students
+          </div>
+        </div>
+      )}
 
-              {teacher && (
-                <p className="text-slate-400 text-sm font-semibold mt-2">
-                  Adviser: {teacher.first_name} {teacher.last_name}
-                </p>
-              )}
-            </div>
+      {/* No Advisory Class */}
+      {!teacher?.advisory ? (
+        <div className="rounded-xl border border-slate-200/80 bg-white p-12 text-center text-xs text-slate-400 shadow-xs">
+          You are not currently assigned as an adviser for any section.
+        </div>
+      ) : (
+        /* Student Table */
+        <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50/80 border-b border-slate-200">
+                <tr>
+                  <th className="w-12 px-4 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    #
+                  </th>
+                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Student Name
+                  </th>
+                  <th className="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    LRN / ID
+                  </th>
+                  <th className="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
 
-            <button
-              type="button"
-              disabled={exporting}
-              onClick={async () => {
-                try {
-                  setExporting(true);
+              <tbody className="divide-y divide-slate-100">
+                {filteredStudents.map((student, index) => {
+                  const isExpanded = expandedStudent === student.id;
 
-                  await generateBanigPDF({
-                    queryClient,
-                    teacher,
-                    students,
-                  });
-                } finally {
-                  setExporting(false);
-                }
-              }}
-              className="inline-flex items-center gap-2 self-start md:self-auto px-5 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-xl shadow-sm hover:bg-slate-50 disabled:opacity-50"
-            >
-              <Download size={18} />
+                  return (
+                    <React.Fragment key={student.id}>
+                      {/* Student Row */}
+                      <tr
+                        onClick={() =>
+                          setExpandedStudent((previous) =>
+                            previous === student.id ? null : student.id,
+                          )
+                        }
+                        className={`cursor-pointer transition-colors ${
+                          isExpanded ? "bg-indigo-50/40" : "hover:bg-slate-50/60"
+                        }`}
+                      >
+                        <td className="px-4 py-3.5 text-center text-slate-400 font-mono text-xs">
+                          {index + 1}
+                        </td>
 
-              {exporting ? "Generating..." : "Export Banig"}
-            </button>
-          </header>
+                        <td className="px-6 py-3.5">
+                          <StudentIdentity student={student} />
+                        </td>
 
-          {/* =========================
-              No Advisory
-          ========================= */}
+                        <td className="px-6 py-3.5 text-center">
+                          <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {student.school_id}
+                          </span>
+                        </td>
 
-          {!teacher?.advisory ? (
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 text-slate-600">
-              This teacher has no advisory section assigned yet.
-            </div>
-          ) : (
-            /* =========================
-               Student Table
-            ========================= */
-
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-slate-50/50">
-                      <TableHeading className="w-16 text-center">
-                        #
-                      </TableHeading>
-
-                      <TableHeading>Student Name</TableHeading>
-
-                      <TableHeading className="text-center">
-                        LRN / ID
-                      </TableHeading>
-
-                      <TableHeading className="text-right">
-                        Actions
-                      </TableHeading>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {students.map((student, index) => {
-                      const isExpanded = expandedStudent === student.id;
-
-                      return (
-                        <React.Fragment key={student.id}>
-                          {/* Student Row */}
-
-                          <tr
-                            onClick={() =>
-                              setExpandedStudent((previous) =>
-                                previous === student.id ? null : student.id,
-                              )
-                            }
-                            className={`group cursor-pointer transition ${
-                              isExpanded
-                                ? "bg-indigo-50/40"
-                                : "hover:bg-slate-50"
-                            }`}
-                          >
-                            <td className="p-5 text-center text-slate-400 font-mono text-xs border-b border-slate-100">
-                              {index + 1}
-                            </td>
-
-                            <td className="p-5 border-b border-slate-100">
-                              <StudentIdentity student={student} />
-                            </td>
-
-                            <td className="p-5 text-center border-b border-slate-100">
-                              <span className="font-mono text-sm text-slate-400">
-                                {student.school_id}
-                              </span>
-                            </td>
-
-                            <td className="p-5 border-b border-slate-100">
-                              <div className="flex justify-end items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-
-                                    navigate(
-                                      `/teacher/advisory-class/report-card/${student.id}`,
-                                      {
-                                        state: {
-                                          student: {
-                                            name: `${student.first_name} ${student.last_name}`,
-
-                                            lrn: student.school_id,
-
-                                            section: teacher?.advisory
-                                              ? `${gradeLabel(
-                                                  teacher.advisory.grade_level,
-                                                )} - ${
-                                                  teacher.advisory.section
-                                                }`
-                                              : String(student.section || ""),
-
-                                            Section: teacher?.advisory
-                                              ? `${gradeLabel(
-                                                  teacher.advisory.grade_level,
-                                                )} - ${
-                                                  teacher.advisory.section
-                                                }`
-                                              : String(student.section || ""),
-
-                                            grade: student.grade_level,
-                                          },
-                                        },
+                        <td className="px-6 py-3.5">
+                          <div className="flex justify-end items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                const cleanGrade = formatGradeLevel(student.grade_level || teacher?.advisory?.grade_level);
+                                const cleanSection = formatSectionName(teacher?.advisory?.section || (student as any).section_name || student.section);
+                                navigate(
+                                  `/teacher/advisory-class/report-card/${student.id}`,
+                                  {
+                                    state: {
+                                      student: {
+                                        name: `${student.first_name} ${student.last_name}`.trim(),
+                                        lrn: student.school_id,
+                                        section: cleanSection,
+                                        Section: cleanSection,
+                                        grade: cleanGrade,
+                                        age: (student as any).age,
+                                        sex: (student as any).sex || (student as any).gender,
+                                        schoolYear: activeTerm?.school_year?.name || "",
                                       },
-                                    );
-                                  }}
-                                  className="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm"
-                                >
-                                  Generate SF9
-                                </button>
+                                    },
+                                  },
+                                );
+                              }}
+                              className="px-3 py-1.5 bg-white border border-slate-200/80 text-slate-700 text-xs font-semibold rounded-lg hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors shadow-xs"
+                            >
+                              Generate SF9
+                            </button>
 
-                                <span className="p-2 text-slate-400">
-                                  {isExpanded ? (
-                                    <ChevronUp size={18} />
-                                  ) : (
-                                    <ChevronDown size={18} />
-                                  )}
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-
-                          {/* Expanded Semester Grades */}
-
-                          {isExpanded && (
-                            <tr>
-                              <td colSpan={4} className="p-0 bg-slate-50/30">
-                                <StudentSemesterDetails student={student} />
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-
-                    {/* Empty students */}
-
-                    {students.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="p-8 text-center text-slate-600"
-                        >
-                          No students found in this advisory section.
+                            <span className="p-1 text-slate-400 hover:text-slate-600">
+                              {isExpanded ? (
+                                <ChevronUp size={16} />
+                              ) : (
+                                <ChevronDown size={16} />
+                              )}
+                            </span>
+                          </div>
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+
+                      {/* Expanded Semester Grades */}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={4} className="p-0 bg-slate-50/40 border-b border-slate-100">
+                            <StudentSemesterDetails student={student} />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+
+                {filteredStudents.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-6 py-12 text-center text-xs text-slate-400"
+                    >
+                      {students.length === 0
+                        ? "No students enrolled in this advisory section."
+                        : "No students match your search query."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </section>
-    </main>
+      )}
+    </div>
   );
 }
 
@@ -438,71 +453,62 @@ function StudentSemesterDetails({ student }: { student: AdvisoryStudent }) {
   }
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* =========================
-            Performance Details
-        ========================= */}
-
-        <div className="space-y-4">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            Performance Details
+    <div className="p-5 border-t border-slate-100 bg-slate-50/50">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+        {/* Performance Details Cards */}
+        <div className="space-y-3">
+          <h4 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            Academic Performance
           </h4>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-              Overall Average
+          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase">
+              Overall Cumulative Average
             </p>
-
-            <p className="text-xl font-black text-slate-800">
+            <p className="text-xl font-bold text-slate-900 mt-1">
               {overallAverage != null ? `${overallAverage.toFixed(1)}%` : "—"}
             </p>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-              Grade Basis
+          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase">
+              Curriculum Basis
             </p>
-
-            <p className="text-sm font-black text-slate-800">Semester Grades</p>
+            <p className="text-xs font-semibold text-slate-800 mt-1">
+              3 Semesters Standard
+            </p>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-              Subjects
+          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase">
+              Enrolled Subjects
             </p>
-
-            <p className="text-xl font-black text-slate-800">{grades.length}</p>
+            <p className="text-xl font-bold text-slate-900 mt-1">
+              {grades.length}
+            </p>
           </div>
         </div>
 
-        {/* =========================
-            Semester Table
-        ========================= */}
-
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        {/* Semester Matrix Table */}
+        <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500">
                 <tr>
-                  <th className="p-4 pl-6 font-black text-[10px] uppercase tracking-wider text-left">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">
                     Subject Offering
                   </th>
-
-                  <th className="p-4 font-black text-[10px] uppercase tracking-wider text-center">
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">
                     Semester 1
                   </th>
-
-                  <th className="p-4 font-black text-[10px] uppercase tracking-wider text-center">
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">
                     Semester 2
                   </th>
-
-                  <th className="p-4 font-black text-[10px] uppercase tracking-wider text-center">
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">
                     Semester 3
                   </th>
-
-                  <th className="p-4 pr-6 font-black text-[10px] uppercase tracking-wider text-right">
-                    Final
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider">
+                    Final Grade
                   </th>
                 </tr>
               </thead>
@@ -512,9 +518,9 @@ function StudentSemesterDetails({ student }: { student: AdvisoryStudent }) {
                   <tr>
                     <td
                       colSpan={5}
-                      className="p-6 text-slate-600 font-semibold"
+                      className="p-6 text-center text-xs text-slate-400"
                     >
-                      No semester grades available yet.
+                      No semester grades available for this learner yet.
                     </td>
                   </tr>
                 ) : (
@@ -546,15 +552,15 @@ function SemesterGradeRow({ grade }: { grade: SemesterSummaryRow }) {
   ];
 
   return (
-    <tr className="hover:bg-slate-50 transition-colors">
-      <td className="p-4 pl-6 font-bold text-slate-700">{grade.subject}</td>
+    <tr className="hover:bg-slate-50/60 transition-colors">
+      <td className="px-4 py-3 font-semibold text-slate-800">{grade.subject}</td>
 
       {semesterScores.map((score, index) => (
         <td
           key={index}
-          className={`p-4 text-center font-medium ${
+          className={`px-4 py-3 text-center font-mono ${
             typeof score === "number" && score < 75
-              ? "text-rose-500"
+              ? "text-rose-600 font-semibold"
               : "text-slate-600"
           }`}
         >
@@ -562,9 +568,9 @@ function SemesterGradeRow({ grade }: { grade: SemesterSummaryRow }) {
         </td>
       ))}
 
-      <td className="p-4 pr-6 text-right">
+      <td className="px-4 py-3 text-right">
         <span
-          className={`font-black ${
+          className={`font-mono font-bold ${
             typeof grade.final === "number" && grade.final < 75
               ? "text-rose-600"
               : "text-indigo-600"
@@ -583,17 +589,20 @@ function SemesterGradeRow({ grade }: { grade: SemesterSummaryRow }) {
 
 function StudentIdentity({ student }: { student: AdvisoryStudent }) {
   const fullName = `${student.first_name} ${student.last_name}`.trim();
+  const initials =
+    (student.first_name?.charAt(0) || "") + (student.last_name?.charAt(0) || "");
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 group-hover:bg-white group-hover:text-indigo-600 transition-colors border border-transparent group-hover:border-indigo-100">
-        {(fullName[0] || "?").toUpperCase()}
+    <div className="flex items-center gap-3">
+      <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center font-bold text-xs text-blue-700 border border-blue-100 shrink-0">
+        {initials || "S"}
       </div>
 
-      <div className="flex flex-col">
-        <span className="font-bold text-slate-800 text-base">{fullName}</span>
-
-        <span className="text-[11px] font-semibold text-slate-400">
+      <div className="min-w-0">
+        <span className="font-semibold text-sm text-slate-900 block truncate">
+          {fullName}
+        </span>
+        <span className="text-xs text-slate-400 block truncate">
           {student.email}
         </span>
       </div>
@@ -602,54 +611,23 @@ function StudentIdentity({ student }: { student: AdvisoryStudent }) {
 }
 
 /* ==============================
-   Table Heading
-============================== */
-
-function TableHeading({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-
-  className?: string;
-}) {
-  return (
-    <th
-      className={`p-5 text-[11px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 ${className}`}
-    >
-      {children}
-    </th>
-  );
-}
-
-/* ==============================
-   Loading
+   Loading & Error
 ============================== */
 
 function AdvisoryLoading() {
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <div className="h-28 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-
-        <div className="h-96 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-      </div>
-    </main>
+    <div className="space-y-4 animate-pulse">
+      <div className="h-20 rounded-xl border border-slate-200/80 bg-white" />
+      <div className="h-96 rounded-xl border border-slate-200/80 bg-white" />
+    </div>
   );
 }
 
-/* ==============================
-   Error
-============================== */
-
 function AdvisoryError({ message }: { message: string }) {
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-xl rounded-3xl border border-rose-200 bg-white p-8 text-center">
-        <AlertCircle className="mx-auto text-rose-500" size={28} />
-
-        <div className="mt-3 font-black text-slate-900">{message}</div>
-      </div>
-    </main>
+    <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-6 text-rose-700 text-center max-w-xl mx-auto">
+      <AlertCircle className="mx-auto text-rose-500 mb-2" size={24} />
+      <div className="font-bold text-sm text-slate-900">{message}</div>
+    </div>
   );
 }

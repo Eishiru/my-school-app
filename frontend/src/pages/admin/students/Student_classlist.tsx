@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, MoreHorizontal, Plus, Mail, Users, Trash2 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, MoreVertical, Plus, Mail, Users, Trash2, ExternalLink } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import AddStudentModal from "./AddStudentModal";
 import AddAdviserModal from "./AddAdviserModal";
+import { authFetch } from "../../../api/apiClient";
+import {
+  useAdminSectionDetail,
+  useAdminSectionStudents,
+  useAdminTeachers,
+  useAssignStudentToSection,
+  useRemoveStudentFromSection,
+  useAssignAdviserToSection,
+  useRemoveAdviserFromSection,
+} from "../../../hooks/useAdminData";
 
 interface Student {
   id: number;
@@ -28,25 +38,52 @@ interface Teacher {
 }
 
 export const StudentClassList = () => {
+  const navigate = useNavigate();
   const { sectionId } = useParams<{ sectionId: string }>();
-  const token = localStorage.getItem("access");
 
-  const [students, setStudents] = useState<Student[]>([]);
-  const [section, setSection] = useState<Section | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: section = null } = useAdminSectionDetail(sectionId!);
+  const { data: students = [], isLoading: loading } = useAdminSectionStudents(sectionId!);
+  const { data: availableTeachers = [] } = useAdminTeachers();
+
+  const assignStudentMutation = useAssignStudentToSection();
+  const removeStudentMutation = useRemoveStudentFromSection();
+  const assignAdviserMutation = useAssignAdviserToSection();
+  const removeAdviserMutation = useRemoveAdviserFromSection();
+
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [isAdviserModalOpen, setIsAdviserModalOpen] = useState(false);
 
+  // Close menu on outside click or Escape
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-student-menu]")) {
+        setOpenMenuId(null);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenMenuId(null);
+      }
+    };
+
+    if (openMenuId !== null) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
+
   const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
-
-  const [availableTeachers, setAvailableTeachers] = useState<Teacher[]>([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | "">("");
 
   const [searchQuery, setSearchQuery] = useState("");
-
 
   // -------------------
   // Adviser state
@@ -66,126 +103,38 @@ export const StudentClassList = () => {
   }, [hasAdviser, isAdviserModalOpen]);
 
   // -------------------
-  // Fetch Section
-  // -------------------
-  useEffect(() => {
-    if (!sectionId || !token) return;
-
-    const fetchSection = async () => {
-      try {
-        const res = await fetch(`http://127.0.0.1:8000/api/sections/${sectionId}/`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) throw new Error("Section not found");
-
-        const data = await res.json();
-        setSection(data);
-      } catch (err) {
-        console.error(err);
-        setSection(null);
-      }
-    };
-
-    fetchSection();
-  }, [sectionId, token]);
-
-  // -------------------
-  // Fetch Students in Section
-  // -------------------
-  useEffect(() => {
-    if (!sectionId || !token) return;
-
-    const fetchStudents = async () => {
-      try {
-        setLoading(true);
-
-        const res = await fetch(`http://127.0.0.1:8000/api/sections/${sectionId}/students/`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) throw new Error("Failed to load students");
-
-        const data = await res.json();
-        setStudents(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error(err);
-        setStudents([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStudents();
-  }, [sectionId, token]);
-
-  // -------------------
   // Fetch Available Students (grade_level match, section=null)
   // -------------------
   useEffect(() => {
-    if (!token || !section) return;
+    if (!section) return;
 
-    fetch(
-      `http://127.0.0.1:8000/api/students/?section=null&grade_level=${section.grade_level}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    )
+    authFetch(`/students/?section=null&grade_level=${section.grade_level}`)
       .then((res) => res.json())
       .then((data) => setAvailableStudents(Array.isArray(data) ? data : []))
       .catch((e) => {
         console.error(e);
         setAvailableStudents([]);
       });
-  }, [section, token]);
+  }, [section]);
+
+
 
   // -------------------
-  // Fetch Teachers (only needed if no adviser yet)
-  // -------------------
-  useEffect(() => {
-    if (!token) return;
-    if (hasAdviser) return; // ✅ prevent fetching if adviser already assigned
-
-    fetch("http://127.0.0.1:8000/api/teachers/", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setAvailableTeachers(Array.isArray(data) ? data : []))
-      .catch((e) => {
-        console.error(e);
-        setAvailableTeachers([]);
-      });
-  }, [token, hasAdviser]);
-
   // -------------------
   // Add MANY students to section
   // -------------------
   const handleAddStudents = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !section || selectedStudentIds.length === 0) return;
+    if (!section || selectedStudentIds.length === 0) return;
 
     try {
-      const results = await Promise.all(
-        selectedStudentIds.map(async (id) => {
-          const res = await fetch(`http://127.0.0.1:8000/api/students/${id}/`, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ section: section.id }),
-          });
-
-          if (!res.ok) {
-            const txt = await res.text().catch(() => "");
-            throw new Error(txt || `Failed to assign student ${id}`);
-          }
-
-          return res.json();
-        })
+      await Promise.all(
+        selectedStudentIds.map((id) =>
+          assignStudentMutation.mutateAsync({ studentId: id, sectionId: section.id })
+        )
       );
 
-      setStudents((prev) => [...prev, ...results]);
       setAvailableStudents((prev) => prev.filter((s) => !selectedStudentIds.includes(s.id)));
-
       setSelectedStudentIds([]);
       setIsStudentModalOpen(false);
     } catch (err) {
@@ -197,24 +146,16 @@ export const StudentClassList = () => {
   // -------------------
   // Remove student from section
   // -------------------
-  const handleRemoveFromSection = async (id: number) => {
-    if (!token) return;
+  const handleRemoveFromSection = async (student: Student) => {
+    const secName = section?.name ?? "this";
+    const ok = window.confirm(
+      `Remove student "${student.first_name} ${student.last_name}" (${student.school_id}) from section ${secName}?`
+    );
+    if (!ok) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/students/${id}/`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ section: null }),
-      });
-
-      if (!res.ok) throw new Error("Remove failed");
-
-      setStudents((prev) => prev.filter((student) => student.id !== id));
-
-      const removed = students.find((s) => s.id === id);
+      await removeStudentMutation.mutateAsync({ studentId: student.id, sectionId: section?.id || "" });
+      const removed = students.find((s) => s.id === student.id);
       if (removed) setAvailableStudents((prev) => [removed, ...prev]);
     } catch (err) {
       console.error(err);
@@ -229,51 +170,31 @@ export const StudentClassList = () => {
   // -------------------
   const handleAssignAdviser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !section || !selectedTeacherId) return;
+    if (!section || !selectedTeacherId) return;
 
-    const res = await fetch(`http://127.0.0.1:8000/api/sections/${section.id}/`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ adviser: selectedTeacherId }),
-    });
-
-    if (!res.ok) {
+    try {
+      await assignAdviserMutation.mutateAsync({
+        sectionId: section.id,
+        teacherId: selectedTeacherId,
+      });
+      setIsAdviserModalOpen(false);
+      setSelectedTeacherId("");
+    } catch (err) {
       alert("Failed to assign adviser");
-      return;
     }
-
-    const updatedSection = await res.json();
-    setSection(updatedSection);
-    setIsAdviserModalOpen(false);
-    setSelectedTeacherId("");
   };
 
   // -------------------
   // Remove adviser
   // -------------------
   const handleRemoveAdviser = async () => {
-    if (!token || !section) return;
+    if (!section) return;
 
     const ok = window.confirm("Remove adviser from this section?");
     if (!ok) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/sections/${section.id}/`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ adviser: null }),
-      });
-
-      if (!res.ok) throw new Error("Failed to remove adviser");
-
-      const updatedSection = await res.json();
-      setSection(updatedSection);
+      await removeAdviserMutation.mutateAsync(section.id);
       setSelectedTeacherId("");
     } catch (err) {
       console.error(err);
@@ -282,170 +203,214 @@ export const StudentClassList = () => {
   };
 
   // -------------------
+  // Filter students based on search query
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((s) => {
+      const hay = `${s.first_name} ${s.last_name} ${s.email} ${s.school_id}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [students, searchQuery]);
+
+  // -------------------
   // UI states
   // -------------------
-  if (loading) return <div className="p-12 text-center">Loading students...</div>;
-  if (!section) return <div className="p-12 text-center">Section Not Found</div>;
+  if (loading) return <div className="p-8 text-center text-xs text-slate-400">Loading section roster...</div>;
+  if (!section) return <div className="p-8 text-center text-xs text-slate-400">Section not found</div>;
 
   return (
-    <div className="flex-1 p-6 bg-slate-50 min-h-screen relative">
+    <div className="space-y-6">
       {/* Navigation */}
-      <Link
-        to="/admin/students"
-        className="inline-flex items-center text-slate-500 hover:text-indigo-600 mb-6 transition-colors group text-sm font-medium"
-      >
-        <ArrowLeft size={16} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-        Back to All Sections
-      </Link>
+      <div>
+        <Link
+          to="/admin/students"
+          className="inline-flex items-center text-slate-500 hover:text-indigo-600 transition-colors text-xs font-medium group mb-3"
+        >
+          <ArrowLeft size={14} className="mr-1.5 group-hover:-translate-x-1 transition-transform" />
+          Back to All Sections
+        </Link>
 
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            {section.grade_level.replace("GRADE_", "Grade ")} — {section.name}
-          </h1>
+        {/* Header Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              {section.grade_level.replace("GRADE_", "Grade ")} — Section {section.name}
+            </h1>
 
-          <div className="flex items-center gap-2 text-slate-500 text-sm mt-1 flex-wrap">
-            <Users size={14} />
-            <span>
-              Adviser: <span className="font-semibold text-slate-700">{adviserLabel}</span>
-            </span>
+            <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 flex-wrap">
+              <Users size={14} className="text-slate-400" />
+              <span>
+                Class Adviser:{" "}
+                <span className="font-semibold text-slate-800">
+                  {adviserLabel}
+                </span>
+              </span>
 
-            {hasAdviser && (
-              <button
-                type="button"
-                onClick={handleRemoveAdviser}
-                className="ml-2 inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg"
-              >
-                <Trash2 size={14} />
-                Remove Adviser
-              </button>
-            )}
+              {hasAdviser && (
+                <button
+                  type="button"
+                  onClick={handleRemoveAdviser}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-md transition-colors"
+                >
+                  <Trash2 size={12} />
+                  Remove Adviser
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* RIGHT SIDE: search + buttons */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
-          {/* 🔍 Search */}
-          <input
-            type="text"
-            placeholder="Search student (name, email, ID)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full md:w-72 px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-          />
+          {/* Action buttons */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {!hasAdviser ? (
+              <button
+                onClick={() => setIsAdviserModalOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
+              >
+                <Plus size={15} className="text-indigo-600" />
+                Assign Adviser
+              </button>
+            ) : null}
 
-          {/* Buttons */}
-          {!hasAdviser ? (
             <button
-              onClick={() => setIsAdviserModalOpen(true)}
-              className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl shadow-md text-sm font-bold"
+              onClick={() => setIsStudentModalOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors"
             >
-              <Plus size={18} />
-              Add Adviser
+              <Plus size={15} />
+              Add Students to Section
             </button>
-          ) : (
-            <button
-              disabled
-              className="flex items-center justify-center gap-2 bg-slate-200 text-slate-500 px-5 py-2.5 rounded-xl text-sm font-bold cursor-not-allowed"
-            >
-              <Plus size={18} />
-              Adviser Assigned
-            </button>
-          )}
-
-          <button
-            onClick={() => setIsStudentModalOpen(true)}
-            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl shadow-md text-sm font-bold"
-          >
-            <Plus size={18} />
-            Add Students
-          </button>
+          </div>
         </div>
       </div>
 
+      {/* Filter / Search Bar */}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative flex-1 sm:max-w-md">
+          <input
+            type="text"
+            placeholder="Search by student name, email, or school ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-slate-50/50 py-2 pl-3 pr-4 text-xs text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
+          />
+        </div>
+        <div className="text-xs text-slate-500 font-medium">
+          Showing {filteredStudents.length} of {students.length} students
+        </div>
+      </div>
 
       {/* Table Card */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">
-            Enrolled Students ({students.length})
-          </h2>
-        </div>
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden min-h-[320px]">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-slate-50/80 border-b border-slate-200">
+            <tr>
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                School ID
+              </th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Full Name
+              </th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Email Address
+              </th>
+              <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">
+                Actions
+              </th>
+            </tr>
+          </thead>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-y-hidden min-h-screen">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                  School ID
-                </th>
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                  Full Name
-                </th>
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                  Email
-                </th>
-                <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-right">
-                  Actions
-                </th>
-              </tr>
-            </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredStudents.map((student, index) => {
+              const initials =
+                (student.first_name?.charAt(0) || "") + (student.last_name?.charAt(0) || "");
 
-            <tbody className="divide-y divide-slate-100">
-              {students.map((student) => (
-                <tr key={student.school_id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-bold text-slate-700">{student.school_id}</span>
+              return (
+                <tr key={student.school_id} className="hover:bg-slate-50/60 transition-colors group">
+                  <td className="px-6 py-3.5">
+                    <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      {student.school_id}
+                    </span>
                   </td>
 
-                  <td className="px-6 py-4 text-sm">
-                    <span className="font-bold text-slate-900">{student.last_name}</span>,{" "}
-                    {student.first_name}
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-slate-500">
-                      <Mail size={14} className="text-slate-300" />
-                      <span className="text-sm">{student.email}</span>
+                  <td className="px-6 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-700 border border-blue-100">
+                        {initials || "S"}
+                      </div>
+                      <span className="font-semibold text-sm text-slate-900">
+                        {student.last_name}, {student.first_name}
+                      </span>
                     </div>
                   </td>
 
-                  <td className="px-6 py-4 text-right relative">
-                    <button
-                      onClick={() => setOpenMenuId(openMenuId === student.id ? null : student.id)}
-                      className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                    >
-                      <MoreHorizontal size={18} className="text-slate-400" />
-                    </button>
+                  <td className="px-6 py-3.5 text-xs text-slate-600">
+                    <div className="flex items-center gap-1.5">
+                      <Mail size={13} className="text-slate-400" />
+                      <span>{student.email}</span>
+                    </div>
+                  </td>
 
-                    {openMenuId === student.id && (
-                      <div>
-                        <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
-                        <div className="absolute right-0 mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-xl z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                  <td className="px-6 py-3.5 text-right">
+                    <div className="relative inline-block text-left" data-student-menu>
+                      <button
+                        onClick={() => setOpenMenuId(openMenuId === student.id ? null : student.id)}
+                        className={`p-1.5 rounded-lg border transition-colors ${
+                          openMenuId === student.id
+                            ? "border-slate-300 bg-slate-100 text-slate-800 shadow-inner"
+                            : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                        }`}
+                        aria-label="Open actions"
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+
+                      {openMenuId === student.id && (
+                        <div
+                          className={`absolute right-0 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-30 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 ${
+                            index >= filteredStudents.length - 2 && filteredStudents.length > 2
+                              ? "bottom-full mb-1.5 origin-bottom-right"
+                              : "top-full mt-1.5 origin-top-right"
+                          }`}
+                        >
                           <button
-                            onClick={() => handleRemoveFromSection(student.id)}
-                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 font-medium"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              navigate("/admin/accounts", { state: { activeTab: "student" } });
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
                           >
-                            <Trash2 size={14} /> Remove Student
+                            <ExternalLink size={14} className="text-indigo-600 shrink-0" />
+                            <span>View in Accounts</span>
+                          </button>
+
+                          <div className="my-1 border-t border-slate-100" />
+
+                          <button
+                            onClick={() => handleRemoveFromSection(student)}
+                            className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 font-medium transition-colors"
+                          >
+                            <Trash2 size={14} className="text-rose-600 shrink-0" />
+                            <span>Remove from Section</span>
                           </button>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
 
-              {students.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-slate-500">
-                    No students enrolled yet.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+            {filteredStudents.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-6 py-12 text-center text-xs text-slate-400">
+                  {students.length === 0
+                    ? "No students currently enrolled in this section."
+                    : "No students matching your search."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Add Students Modal */}

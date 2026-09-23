@@ -94,6 +94,7 @@ export type TeacherQuiz = {
   id: number;
   quiz_id: string;
   title: string;
+  SubjectOffering?: number;
   subject_name: string;
   open_time: string;
   close_time: string;
@@ -208,6 +209,7 @@ export interface StudentSubmission {
   submitted_at: string;
   score: number;
   status: string;
+  time_spent?: number;
   answers: StudentAnswer[];
 }
 
@@ -444,6 +446,10 @@ export type AdvisoryStudent = {
   first_name: string;
   last_name: string;
   email: string;
+  sex?: string;
+  gender?: string;
+  birthdate?: string;
+  age?: number | null;
   grade_level: string | number;
   section: number | null;
 };
@@ -455,6 +461,8 @@ export type StudentDetail = {
   last_name: string;
   email?: string;
   sex?: string;
+  gender?: string;
+  birthdate?: string;
   age?: number | null;
   grade_level?: string | number;
   section_name?: string;
@@ -490,4 +498,15 @@ export type BatchRecordQuizScoresPayload = {
 export type BatchRecordQuizScoresResponse = {
   status: string;
   updated_count: number;
+};
+
+export type TeacherPendingGradingTask = {
+  id: number;
+  quiz_id: string;
+  title: string;
+  subject_name: string;
+  subject_offering_id: number | null;
+  pending_grading_count: number;
+  open_time: string;
+  close_time: string;
 };

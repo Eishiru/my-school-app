@@ -1,59 +1,61 @@
-
+import React from 'react';
 
 interface StatCardProps {
   label: string;
   value: number | null | undefined;
 }
 
-const StatCard = ({
-  label,
-  value
-}: StatCardProps) => {
+export default function StatCard({ label, value }: StatCardProps) {
   const hasValue = typeof value === 'number' && !Number.isNaN(value);
   const safeValue = hasValue ? value : 0;
   const ringDegrees = Math.max(0, Math.min(360, safeValue * 3.6));
 
   return (
-    <section className="rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_10px_35px_rgba(15,23,42,0.06)] sm:p-8">
-      <h2 className="text-lg font-extrabold tracking-[-0.025em] text-slate-950">{label}</h2>
-      <div className="mt-8 grid place-items-center">
+    <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs flex flex-col justify-between">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-900">{label}</h3>
+        <span className="text-xs font-medium text-slate-400">DepEd 100-pt scale</span>
+      </div>
+
+      <div className="my-6 flex justify-center">
         <div
-          className="grid size-[200px] place-items-center rounded-full p-[10px]"
+          className="relative grid size-44 place-items-center rounded-full p-2.5 transition-all"
           style={{
             background: hasValue
-              ? `conic-gradient(#5b4cf6 0deg ${ringDegrees * 0.72}deg, #7f6ff6 ${ringDegrees * 0.72}deg ${ringDegrees}deg, #ddd9ff ${ringDegrees}deg 360deg)`
+              ? `conic-gradient(#4f46e5 0deg ${ringDegrees * 0.72}deg, #6366f1 ${ringDegrees * 0.72}deg ${ringDegrees}deg, #e2e8f0 ${ringDegrees}deg 360deg)`
               : '#f1f5f9',
           }}
         >
-          <div className="grid size-full place-items-center rounded-full bg-white shadow-inner">
+          <div className="grid size-full place-items-center rounded-full bg-white shadow-xs">
             <div className="text-center">
-              <div className="text-[42px] font-extrabold tracking-[-0.04em] text-slate-950">
-                {hasValue ? value.toFixed(1) : "—"}
+              <div className="font-mono text-3xl font-bold tracking-tight text-slate-900">
+                {hasValue ? value.toFixed(1) : '—'}
               </div>
-              <div className="mt-1 text-xs font-semibold uppercase tracking-[0.04em] text-slate-500">Out of 100</div>
-              
+              <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                Out of 100
+              </div>
+
               {hasValue && (
-                <div
-                  className={`mt-2 flex flex-col items-center text-sm leading-tight font-bold ${
-                    value >= 75 ? "text-emerald-600" : "text-rose-600"
-                  }`}
-                >
-                  {value >= 75 ? (
-                    <span>Passing</span>
-                  ) : (
-                  <>
-                    <span>Needs</span>
-                    <span>Improvement</span>
-                  </>
-                  )}
+                <div className="mt-1.5">
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider ${
+                      value >= 75
+                        ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                        : 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
+                    }`}
+                  >
+                    {value >= 75 ? 'Passing' : 'Needs Attention'}
+                  </span>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
-    </section>
-  );
-};
 
-export default StatCard;
+      <p className="text-center text-xs text-slate-500">
+        Based on graded activities and semester assessments
+      </p>
+    </div>
+  );
+}

@@ -1,114 +1,41 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BookOpen,
   Users,
   BarChart3,
-  AlertTriangle,
   Clock,
   MapPin,
-  Layers,
-  ArrowUpRight,
+  ArrowRight,
+  AlertCircle,
+  Calendar,
+  Plus,
+  FileCheck2,
+  UsersRound,
+  GraduationCap,
 } from 'lucide-react';
 
-import { useTeacherSubjects } from '../../../hooks/useTeacherSubjects';
+import { useTeacherPendingGrading, useTeacherSubjects } from '../../../hooks/useTeacherSubjects';
+import { useActiveAcademicTerm } from '../../../hooks/useAdminData';
 
-function DashboardLayoutStyles() {
-  return <style>{`
-    .teacher-dashboard { min-width: 0; background: #f8fafc; }
-    .teacher-dashboard * { box-sizing: border-box; }
-    .teacher-dashboard .dashboard-top { position: static; flex-shrink: 0; }
-    .teacher-dashboard .dashboard-top > div { padding: 12px 16px; }
-    .teacher-dashboard .dashboard-content { width: 100%; padding: 12px 16px 16px; }
-    .teacher-dashboard .dashboard-stats { gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .teacher-dashboard .dashboard-stat { border-radius: 14px; min-width: 0; }
-    .teacher-dashboard .dashboard-stat > div { padding: 12px; }
-    .teacher-dashboard .dashboard-stat-value { margin-top: 4px; font-size: 26px; line-height: 1.15; }
-    .teacher-dashboard .dashboard-stat-hint { margin-top: 4px; }
-    .teacher-dashboard .dashboard-stat-icon { width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; }
-    .teacher-dashboard .dashboard-subjects { margin-top: 12px; border-radius: 16px; min-width: 0; }
-    .teacher-dashboard .dashboard-subjects-header { padding: 12px 16px; flex-shrink: 0; }
-    .teacher-dashboard .dashboard-subjects-title { margin-top: 3px; font-size: 20px; line-height: 1.2; }
-    .teacher-dashboard .dashboard-subjects-description { margin-top: 4px; font-size: 12px; }
-    .teacher-dashboard .dashboard-subjects-body { padding: 12px; min-width: 0; }
-    .teacher-dashboard .dashboard-subject-grid { gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); align-items: start; }
-    .teacher-dashboard .dashboard-subject-card { min-width: 0; border-radius: 12px; }
-    .teacher-dashboard .dashboard-subject-card > div:first-child { padding: 12px; }
-    .teacher-dashboard .dashboard-subject-name { font-size: 16px; line-height: 1.3; }
-    .teacher-dashboard .dashboard-subject-card .dashboard-card-details { margin-top: 10px; gap: 6px; }
-    .teacher-dashboard .dashboard-card-details > div { padding: 8px; border-radius: 8px; min-width: 0; }
-    .teacher-dashboard .dashboard-card-details > div > div:first-child { letter-spacing: .04em; }
-    .teacher-dashboard .dashboard-card-details span { padding: 3px 8px; }
-    .teacher-dashboard .dashboard-card-footer { padding: 8px 12px; }
-    @media (min-width: 1024px) and (min-height: 600px) {
-      .teacher-dashboard { height: var(--dashboard-height, 100dvh); min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-      .teacher-dashboard .dashboard-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-      .teacher-dashboard .dashboard-stats { flex-shrink: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .teacher-dashboard .dashboard-subjects { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-      .teacher-dashboard .dashboard-subjects-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
-      .teacher-dashboard .dashboard-loading { min-height: 0; overflow: auto; padding-top: 16px; padding-bottom: 16px; width: 100%; }
-    }
-  `}</style>;
-}
-
-// --- Helpers ---
-
-function SkeletonLine({ w = 'w-full' }: { w?: string }) {
-  return <div className={`h-3 ${w} rounded-full bg-slate-200/80 animate-pulse`} />;
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: React.ReactNode;
-  hint: string;
-}) {
-  return (
-    <div className="dashboard-stat relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</div>
-            <div className="dashboard-stat-value mt-3 text-4xl font-black tracking-tight text-slate-900">{value}</div>
-            <div className="dashboard-stat-hint mt-2 text-xs text-slate-500">{hint}</div>
-          </div>
-          <div className="dashboard-stat-icon h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700">
-            {icon}
-          </div>
-        </div>
-      </div>
-      {/* <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-slate-100" /> */}
-    </div>
-  );
-}
-
-function chipClass(kind: 'good' | 'warn' | 'muted') {
-  if (kind === 'good') return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200';
-  if (kind === 'warn') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
-  return 'bg-slate-50 text-slate-600 ring-1 ring-slate-200';
-}
-
-export default function Dashboard() {
-
+export default function TeacherDashboard() {
   const {
     data: subjects = [],
     isLoading,
     error,
   } = useTeacherSubjects();
 
-
+  const { data: pendingGradingTasks = [] } = useTeacherPendingGrading();
+  const { data: activeTerm } = useActiveAcademicTerm();
 
   const { totalClasses, totalStudents, totalPendingTasks, overallAvg } = useMemo(() => {
     const totalClasses = subjects.length;
     const totalStudents = subjects.reduce((sum, s) => sum + (s.students || 0), 0);
-    const totalPendingTasks = subjects.reduce((sum, s) => sum + (s.pendingTasks || 0), 0);
+    const subjectsPending = subjects.reduce((sum, s) => sum + (s.pendingTasks || 0), 0);
+    const gradingTasksPending = pendingGradingTasks.reduce((sum, t) => sum + (t.pending_grading_count || 0), 0);
+    const totalPendingTasks = Math.max(subjectsPending, gradingTasksPending);
 
     const overallAvg =
       totalClasses > 0
@@ -116,7 +43,7 @@ export default function Dashboard() {
         : 'N/A';
 
     return { totalClasses, totalStudents, totalPendingTasks, overallAvg };
-  }, [subjects]);
+  }, [subjects, pendingGradingTasks]);
 
   const today = useMemo(
     () =>
@@ -129,283 +56,297 @@ export default function Dashboard() {
     []
   );
 
-  const pageRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const page = pageRef.current;
-    if (!page) return;
-    const resize = () => {
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-      const top = Math.max(0, page.getBoundingClientRect().top);
-      const parentPadding = page.parentElement
-        ? parseFloat(getComputedStyle(page.parentElement).paddingBottom) || 0 : 0;
-      page.style.setProperty('--dashboard-height', `${Math.max(0, viewportHeight - top - parentPadding - 1)}px`);
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    if (page.parentElement) observer.observe(page.parentElement);
-    window.addEventListener('resize', resize);
-    window.visualViewport?.addEventListener('resize', resize);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', resize);
-      window.visualViewport?.removeEventListener('resize', resize);
-    };
-  }, [isLoading, error]);
-
-  // --- Loading / Error ---
   if (isLoading) {
     return (
-      <main ref={pageRef} className="teacher-dashboard bg-slate-50">
-      <DashboardLayoutStyles />
-        <div className="dashboard-loading mx-auto max-w-6xl px-4 md:px-6 py-8 md:py-10">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="h-8 w-64 rounded-2xl bg-slate-200/80 animate-pulse" />
-              <div className="mt-2 h-3 w-48 rounded-full bg-slate-200/80 animate-pulse" />
-            </div>
-            <div className="h-10 w-28 rounded-2xl bg-white border border-slate-200 shadow-sm" />
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              <SkeletonLine w="w-36" />
-              <div className="mt-5">
-                <SkeletonLine w="w-20" />
-              </div>
-              <div className="mt-3">
-                <SkeletonLine w="w-44" />
-              </div>
-            </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              <SkeletonLine w="w-36" />
-              <div className="mt-5">
-                <SkeletonLine w="w-24" />
-              </div>
-              <div className="mt-3">
-                <SkeletonLine w="w-44" />
-              </div>
-            </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              <SkeletonLine w="w-36" />
-              <div className="mt-5">
-                <SkeletonLine w="w-24" />
-              </div>
-              <div className="mt-3">
-                <SkeletonLine w="w-44" />
-              </div>
-            </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              <SkeletonLine w="w-36" />
-              <div className="mt-5">
-                <SkeletonLine w="w-20" />
-              </div>
-              <div className="mt-3">
-                <SkeletonLine w="w-44" />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-6">
-            <SkeletonLine w="w-40" />
-            <div className="dashboard-card-details mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="h-40 rounded-3xl bg-slate-100 animate-pulse" />
-              <div className="h-40 rounded-3xl bg-slate-100 animate-pulse" />
-              <div className="h-40 rounded-3xl bg-slate-100 animate-pulse" />
-            </div>
-          </div>
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-64 bg-slate-200 rounded-lg" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-28 bg-white border border-slate-200/80 rounded-xl" />
+          ))}
         </div>
-      </main>
+        <div className="h-96 bg-white border border-slate-200/80 rounded-xl" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main ref={pageRef} className="teacher-dashboard bg-slate-50">
-      <DashboardLayoutStyles />
-        <div className="dashboard-loading mx-auto max-w-6xl px-4 md:px-6 py-10">
-          <div className="rounded-3xl border border-rose-200 bg-white p-6">
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500">Error</div>
-            <div className="mt-2 text-lg font-bold text-slate-900">Unable to load your subject offerings.</div>
-            <div className="mt-1 text-sm text-slate-500">
-              If this keeps happening, check your token in localStorage and your backend permissions.
-            </div>
-          </div>
+      <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-6 text-rose-700">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-rose-500" />
+          <h2 className="text-base font-bold">Unable to load subject offerings</h2>
         </div>
-      </main>
+        <p className="mt-1 text-sm text-rose-600">
+          Please check your session or internet connection and try refreshing the page.
+        </p>
+      </div>
     );
   }
 
+  const statCards = [
+    {
+      title: "Assigned Classes",
+      value: totalClasses,
+      subtitle: "Active subject offerings",
+      icon: BookOpen,
+      accent: "text-indigo-600 bg-indigo-50 border-indigo-100",
+      link: "/teacher/subject",
+    },
+    {
+      title: "Total Students",
+      value: totalStudents,
+      subtitle: "Learners across all classes",
+      icon: Users,
+      accent: "text-blue-600 bg-blue-50 border-blue-100",
+      link: "/teacher/subject",
+    },
+    {
+      title: "Pending Tasks",
+      value: totalPendingTasks,
+      subtitle: "Submissions awaiting grading",
+      icon: Clock,
+      accent: "text-amber-600 bg-amber-50 border-amber-100",
+      link: "/teacher/submissions",
+    },
+    {
+      title: "Overall Class Average",
+      value: overallAvg === 'N/A' ? '—' : `${overallAvg}%`,
+      subtitle: "Combined performance index",
+      icon: BarChart3,
+      accent: "text-emerald-600 bg-emerald-50 border-emerald-100",
+      link: "/teacher/grades/semester",
+    },
+  ];
+
+
+
   return (
-    <main ref={pageRef} className="teacher-dashboard bg-slate-50">
-      <DashboardLayoutStyles />
-      {/* Sticky Top Bar */}
-      <div className="dashboard-top sticky top-0 z-20 border-b border-slate-200 bg-slate-50/85 backdrop-blur">
-        <div className="mx-auto l px-4 md:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-700">
-              <Layers size={18} />
-            </div>
-
-            <div className="min-w-0">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Teacher Dashboard</div>
-              <h1 className="truncate text-xl md:text-2xl font-black tracking-tight text-slate-900">
-                Overview
-              </h1>
-              <div className="mt-0.5 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{today}</div>
-            </div>
-
-            <div className="ml-auto hidden md:block">
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700">
-                {totalClasses} class{totalClasses !== 1 ? 'es' : ''}
-              </div>
-            </div>
+    <div className="space-y-6">
+      {/* 1) Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
           </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Instructor Overview
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Welcome back! Here is your daily teaching schedule and subject performance.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200/80 px-3.5 py-2 rounded-lg shadow-xs">
+            <Calendar className="h-4 w-4 text-indigo-600" />
+            <span>{today}</span>
+          </div>
+
+          <Link
+            to="/teacher/activities/create"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors"
+          >
+            <Plus size={15} />
+            <span>Create Activity</span>
+          </Link>
         </div>
       </div>
 
-      <div className="dashboard-content mx-auto max-w-8xl px-4 md:px-6 py-6 md:py-10">
-        {/* Quick stats */}
-        <div className="dashboard-stats grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-          <StatCard
-            icon={<BookOpen size={18} />}
-            label="Total Classes"
-            value={<span>{totalClasses}</span>}
-            hint="Active offerings"
-          />
-          <StatCard
-            icon={<Users size={18} />}
-            label="Total Students"
-            value={<span>{totalStudents}</span>}
-            hint="Across all classes"
-          />
-          <StatCard
-            icon={<AlertTriangle size={18} />}
-            label="Pending Tasks"
-            value={<span>{totalPendingTasks}</span>}
-            hint="Needs attention"
-          />
-          <StatCard
-            icon={<BarChart3 size={18} />}
-            label="Overall Avg."
-            value={<span>{overallAvg === 'N/A' ? '—' : `${overallAvg}%`}</span>}
-            hint="Class averages"
-          />
-        </div>
-
-        {/* Subjects list */}
-        <div className="dashboard-subjects mt-6 rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="dashboard-subjects-header p-6 md:p-8 border-b border-slate-100">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Workspace</div>
-                <div className="dashboard-subjects-title mt-2 text-2xl md:text-3xl font-black tracking-tight text-slate-900">Your Subjects</div>
-                <div className="dashboard-subjects-description mt-2 text-sm text-slate-600">
-                  You have <span className="font-black text-slate-900">{totalClasses}</span> active class
-                  {totalClasses !== 1 ? 'es' : ''} this semester.
+      {/* 2) Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {statCards.map((card, idx) => {
+          const Icon = card.icon;
+          return (
+            <Link
+              key={idx}
+              to={card.link}
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    {card.title}
+                  </p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 font-mono">
+                    {card.value}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">{card.subtitle}</p>
+                </div>
+                <div className={`p-3 rounded-xl border ${card.accent}`}>
+                  <Icon className="h-5 w-5" />
                 </div>
               </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* 2.5) Pending Manual Grading Tasks Section */}
+      {pendingGradingTasks.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/70">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-700">
+                <Clock size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-amber-950">
+                  Activities Awaiting Manual Grading
+                </h2>
+                <p className="text-xs text-amber-800">
+                  Student submissions contain essay or short answer questions that need teacher evaluation.
+                </p>
+              </div>
             </div>
+            <span className="self-start sm:self-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-200/80 text-amber-900">
+              <span className="h-2 w-2 rounded-full bg-amber-600 animate-pulse" />
+              {pendingGradingTasks.length} {pendingGradingTasks.length === 1 ? "Activity" : "Activities"} Pending
+            </span>
           </div>
 
-          <div className="dashboard-subjects-body p-6 md:p-8" tabIndex={0} role="region" aria-label="Your subject offerings">
-            {subjects.length === 0 ? (
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 text-slate-600">
-                No subject offerings assigned yet.
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {pendingGradingTasks.map((task) => (
+              <div
+                key={task.id}
+                className="flex flex-col justify-between rounded-xl border border-amber-200/80 bg-white p-4 shadow-2xs hover:border-amber-300 transition-all"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 truncate">
+                      {task.subject_name}
+                    </span>
+                    <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/60 shrink-0">
+                      {task.pending_grading_count} {task.pending_grading_count === 1 ? "submission" : "submissions"}
+                    </span>
+                  </div>
+                  <h3 className="mt-2 text-sm font-bold text-slate-900 line-clamp-1">
+                    {task.title}
+                  </h3>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">Needs review</span>
+                  <Link
+                    to={`/teacher/activities/${task.id}/grading`}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                  >
+                    <span>Grade Now</span>
+                    <ArrowRight size={13} />
+                  </Link>
+                </div>
               </div>
-            ) : (
-              <div className="dashboard-subject-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {subjects.map((s) => {
-                  const avg = Number(s.average) || 0;
-                  const avgKind: 'good' | 'warn' | 'muted' =
-                    s.students === 0 ? 'muted' : avg >= 85 ? 'good' : 'warn';
-                  const taskKind: 'good' | 'warn' | 'muted' =
-                    (s.pendingTasks || 0) > 0 ? 'warn' : 'good';
-
-                  return (
-                    <Link
-                      to={`/teacher/subject/${s.id}`}
-                      key={s.id}
-                      className="dashboard-subject-card group block rounded-3xl border border-slate-200 bg-white hover:bg-slate-50 transition overflow-hidden"
-                    >
-                      <div className="p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              {s.grade} - {s.section}
-                            </div>
-                            <div className="dashboard-subject-name mt-1 text-xl font-black text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
-                              {s.name}
-                            </div>
-                          </div>
-
-                          <div className="h-10 w-10 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-indigo-50 group-hover:text-indigo-600 group-hover:border-indigo-200 transition">
-                            <ArrowUpRight size={18} />
-                          </div>
-                        </div>
-
-                        <div className="dashboard-card-details mt-4 grid grid-cols-2 gap-2">
-                          <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                              <MapPin size={14} className="text-slate-400" />
-                              Room
-                            </div>
-                            <div className="mt-1 font-black text-slate-900">{s.room_number || '—'}</div>
-                          </div>
-
-                          <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                              <Clock size={14} className="text-slate-400" />
-                              Next Class
-                            </div>
-                            <div className="mt-1 font-black text-slate-900 truncate">{s.nextClass || '—'}</div>
-                          </div>
-                        </div>
-
-                        <div className="dashboard-card-details mt-4 grid grid-cols-3 gap-2">
-                          <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3 text-center">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Students
-                            </div>
-                            <div className="mt-1 text-lg font-black text-slate-900">{s.students ?? 0}</div>
-                          </div>
-
-                          <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3 text-center">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Average
-                            </div>
-                            <div className="mt-2">
-                              <span className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-black ${chipClass(avgKind)}`}>
-                                {s.students === 0 ? '—' : `${avg}%`}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3 text-center">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                              Tasks
-                            </div>
-                            <div className="mt-2">
-                              <span className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-black ${chipClass(taskKind)}`}>
-                                {s.pendingTasks ?? 0}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="dashboard-card-footer px-5 py-4 border-t border-slate-100 bg-white">
-                        <div className="text-xs text-slate-500">
-                          Open class workspace →
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
+            ))}
           </div>
         </div>
+      )}
+
+      {/* 3) Subjects List Section */}
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Active Subject Offerings</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              You are assigned to {totalClasses} teaching {totalClasses === 1 ? 'offering' : 'offerings'} this academic term
+            </p>
+          </div>
+          <Link
+            to="/teacher/subject"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+          >
+            Manage offerings
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        <div className="p-6">
+          {subjects.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-400">
+              No subject offerings currently assigned to your account.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {subjects.map((s) => {
+                const avg = Number(s.average) || 0;
+                const hasStudents = (s.students || 0) > 0;
+                const pending = s.pendingTasks || 0;
+
+                return (
+                  <Link
+                    to={`/teacher/subject/${s.id}`}
+                    key={s.id}
+                    className="group flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs hover:border-indigo-200 hover:shadow-md transition-all"
+                  >
+                    <div>
+                      {/* Section & Grade badge */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 border border-indigo-100">
+                          {s.grade} • Section {s.section}
+                        </span>
+                        {pending > 0 ? (
+                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-100 uppercase">
+                            {pending} Pending
+                          </span>
+                        ) : (
+                          <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-100 uppercase">
+                            Up to date
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Subject Name */}
+                      <h3 className="mt-3 text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                        {s.name}
+                      </h3>
+
+                      {/* Meta Information */}
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-lg bg-slate-50/70 border border-slate-200/60 p-2.5">
+                          <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">
+                            <MapPin size={12} />
+                            <span>Room</span>
+                          </div>
+                          <p className="mt-1 font-semibold text-slate-800 truncate">
+                            {s.room_number || 'TBA'}
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-slate-50/70 border border-slate-200/60 p-2.5">
+                          <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">
+                            <Clock size={12} />
+                            <span>Schedule</span>
+                          </div>
+                          <p className="mt-1 font-semibold text-slate-800 truncate">
+                            {s.nextClass || 'TBA'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Metrics bar */}
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                          <Users size={14} className="text-slate-400" />
+                          <span>{s.students ?? 0} Students</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-slate-400 text-[11px]">Avg:</span>
+                          <span className={`font-semibold font-mono ${hasStudents && avg >= 85 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                            {!hasStudents ? '—' : `${avg}%`}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-indigo-600 group-hover:text-indigo-800 transition-colors">
+                      <span>Open Workspace</span>
+                      <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

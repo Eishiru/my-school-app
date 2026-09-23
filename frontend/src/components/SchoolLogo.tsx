@@ -1,23 +1,23 @@
-export const SchoolLogo = () => (
-  <div className="flex items-center gap-3">
-    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[hsla(221,44%,40%)]">
-      <svg
-        className="h-7 w-7 text-white"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M12 2L2 7l10 5 10-5-10-5z" />
-        <path d="M2 17l10 5 10-5" />
-        <path d="M2 12l10 5 10-5" />
-      </svg>
+export const SchoolLogo = ({ className = "" }: { className?: string }) => (
+  <div className={`flex items-center gap-3 ${className}`}>
+    {/* Logo Mark */}
+    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 shadow-sm ring-1 ring-indigo-200/60">
+      <span className="text-sm font-black tracking-wide text-white">
+        CMR
+      </span>
+
+      
     </div>
+
+    {/* Brand */}
     <div className="flex flex-col text-left">
-      <h2 className="font-headline text-large font-semibold leading-none">ClaroEd</h2>
+      <span className="text-base font-black leading-tight tracking-tight text-slate-950">
+        ClaroEd
+      </span>
+
+      <span className="mt-0.5 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-slate-400">
+        School Portal
+      </span>
     </div>
   </div>
 );

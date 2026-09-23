@@ -21,13 +21,14 @@ from django.db import transaction
 from .ai_service import AIService
 from .models import (GradeChangeLog, Section, Student, Subject, SubjectOffering, Quiz, QuizQuestion, QuizChoice, QuizAttempt, 
     QuizAnswer, Student, GradeForecast, QuizTopicPerformance,
-    QuarterlyGrade, SubjectOfferingFile)
+    QuarterlyGrade, SubjectOfferingFile, SchoolYear, Semester)
 from rest_framework import permissions
 from .serializers import (LoginSerializer, StudentQuizQuestionSerializer, StudentSubjectOfferingSerializer, SubjectListSerializer, SubjectOfferingSerializer, SubjectSerializer, TeacherSerializer, UserSerializer, SectionSerializer, StudentSerializer,QuizSerializer, QuizCreateUpdateSerializer,
     QuizQuestionSerializer, StudentQuizSerializer, QuizAttemptSerializer,
     QuizSubmissionSerializer, QuizChoiceSerializer, QuizAnswerSerializer,
     GradeForecastSerializer, QuizTopicPerformanceSerializer,
-    SemesterReferenceField, QuarterlyGradeSerializer, QuarterlyGradeCreateUpdateSerializer, GradeChangeLogSerializer, SubjectOfferingFileSerializer
+    SemesterReferenceField, QuarterlyGradeSerializer, QuarterlyGradeCreateUpdateSerializer, GradeChangeLogSerializer, SubjectOfferingFileSerializer,
+    SchoolYearSerializer, SemesterSerializer
 )
 from .grade_analytics import GradeAnalyticsService
 
@@ -681,9 +682,28 @@ def import_students_excel(request):
                     status="ACTIVE",
                 )
 
+                gender_raw = row.get("gender") or row.get("sex")
+                gender_val = None
+                if gender_raw and pd.notnull(gender_raw):
+                    g_clean = str(gender_raw).strip().upper()
+                    if g_clean in ["MALE", "M"]:
+                        gender_val = "MALE"
+                    elif g_clean in ["FEMALE", "F"]:
+                        gender_val = "FEMALE"
+
+                birthdate_raw = row.get("birthdate") or row.get("dob") or row.get("birthday")
+                birthdate_val = None
+                if birthdate_raw and pd.notnull(birthdate_raw):
+                    try:
+                        birthdate_val = pd.to_datetime(birthdate_raw).date()
+                    except Exception:
+                        birthdate_val = None
+
                 Student.objects.create(
                     user=user,
                     grade_level=str(row["grade_level"]).upper().strip(),
+                    gender=gender_val,
+                    birthdate=birthdate_val,
                 )
 
                 created += 1
@@ -714,10 +734,114 @@ def list_users(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
-    users = User.objects.all().order_by("-id")
-    serializer = UserSerializer(users, many=True)
+    users = (
+        User.objects.all()
+        .select_related("student_profile__section", "teacher_profile")
+        .prefetch_related("subjects")
+        .order_by("-id")
+    )
 
+    role = request.query_params.get("role")
+    if role:
+        users = users.filter(role=role.upper())
+
+    serializer = UserSerializer(users, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# =========================
+# ACADEMIC YEAR & SEMESTER VIEWSET
+# =========================
+
+class SchoolYearViewSet(ModelViewSet):
+    serializer_class = SchoolYearSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return SchoolYear.objects.prefetch_related("semesters").order_by("-name")
+
+    def perform_create(self, serializer):
+        if self.request.user.role != "ADMIN":
+            raise permissions.exceptions.PermissionDenied("Only administrators can manage academic years.")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if self.request.user.role != "ADMIN":
+            raise permissions.exceptions.PermissionDenied("Only administrators can manage academic years.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if self.request.user.role != "ADMIN":
+            raise permissions.exceptions.PermissionDenied("Only administrators can manage academic years.")
+        instance.delete()
+
+    @action(detail=False, methods=["get"], url_path="active", permission_classes=[IsAuthenticated])
+    def active(self, request):
+        active_sy = SchoolYear.objects.filter(is_active=True).prefetch_related("semesters").first()
+        active_sem = None
+        if active_sy:
+            active_sem = active_sy.semesters.filter(is_active=True).first()
+
+        return Response({
+            "school_year": SchoolYearSerializer(active_sy).data if active_sy else None,
+            "active_semester": SemesterSerializer(active_sem).data if active_sem else None,
+        })
+
+    @action(detail=True, methods=["post"], url_path="activate", permission_classes=[IsAuthenticated])
+    def activate_year(self, request, pk=None):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only administrators can activate academic years."}, status=status.HTTP_403_FORBIDDEN)
+
+        sy = self.get_object()
+        sy.is_active = True
+        sy.save()
+
+        # If no semester is active in this school year, activate SEM1
+        if not sy.semesters.filter(is_active=True).exists():
+            sem1 = sy.semesters.filter(name="SEM1").first()
+            if sem1:
+                sem1.is_active = True
+                sem1.save()
+
+        # Deactivate semesters belonging to other school years
+        Semester.objects.exclude(school_year=sy).update(is_active=False)
+
+        sy.refresh_from_db()
+        return Response(SchoolYearSerializer(sy).data)
+
+    @action(detail=True, methods=["post"], url_path="activate-semester", permission_classes=[IsAuthenticated])
+    def activate_semester(self, request, pk=None):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only administrators can activate semesters."}, status=status.HTTP_403_FORBIDDEN)
+
+        sy = self.get_object()
+        semester_name = request.data.get("semester_name")
+        semester_id = request.data.get("semester_id")
+
+        sem_qs = sy.semesters.all()
+        if semester_id:
+            sem = sem_qs.filter(id=semester_id).first()
+        elif semester_name:
+            sem = sem_qs.filter(name=semester_name).first()
+        else:
+            return Response({"detail": "semester_name or semester_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not sem:
+            return Response({"detail": "Semester not found for this school year."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Ensure this school year is active
+        if not sy.is_active:
+            sy.is_active = True
+            sy.save()
+
+        # Deactivate all other semesters, activate this one
+        Semester.objects.all().update(is_active=False)
+        sem.is_active = True
+        sem.save()
+
+        sy.refresh_from_db()
+        return Response(SchoolYearSerializer(sy).data)
+
 
 class StudentViewSet(ModelViewSet):
     serializer_class = StudentSerializer
@@ -864,7 +988,7 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.filter(role="TEACHER")
     serializer_class = TeacherSerializer
 
-@api_view(["GET", "PATCH", "DELETE"])
+@api_view(["GET", "PUT", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def user_detail(request, pk):
     if request.user.role != "ADMIN":
@@ -876,11 +1000,12 @@ def user_detail(request, pk):
         serializer = UserSerializer(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    elif request.method == "PATCH":
+    elif request.method in ["PUT", "PATCH"]:
         serializer = UserSerializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        user.refresh_from_db()
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
 
     elif request.method == "DELETE":
         user.delete()
@@ -1272,6 +1397,7 @@ class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelView
                 'student_name': f"{attempt.student.user.first_name} {attempt.student.user.last_name}",
                 'student_email': attempt.student.user.email,
                 'submitted_at': attempt.submitted_at,
+                'time_spent': attempt.time_spent,
                 'score': attempt.score,
                 'status': attempt.status,
                 'answers': QuizAnswerSerializer(answers, many=True, context={"request": request}).data
@@ -1279,6 +1405,36 @@ class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelView
             result.append(student_data)
         
         return Response(result)
+
+    @action(detail=False, methods=['get'], url_path='pending-grading')
+    def pending_grading(self, request):
+        """List all quizzes that have submissions waiting for manual grading"""
+        if getattr(request.user, 'role', None) != 'TEACHER':
+            return Response({'error': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
+        
+        from django.db.models import Count, Q
+        quizzes = Quiz.objects.filter(
+            teacher=request.user,
+            questions__question_type='SHORT_ANSWER',
+            attempts__status='SUBMITTED',
+            attempts__answers__question__question_type='SHORT_ANSWER',
+            attempts__answers__manually_graded=False
+        ).annotate(
+            pending_count=Count('attempts', filter=Q(attempts__status='SUBMITTED', attempts__answers__question__question_type='SHORT_ANSWER', attempts__answers__manually_graded=False), distinct=True)
+        ).filter(pending_count__gt=0).select_related('SubjectOffering', 'semester').distinct()
+
+        data = []
+        for q in quizzes:
+            data.append({
+                'id': q.id,
+                'quiz_id': q.quiz_id,
+                'title': q.title,
+                'subject_id': q.SubjectOffering.id if q.SubjectOffering else None,
+                'subject_name': q.SubjectOffering.name if q.SubjectOffering else '',
+                'status': q.status,
+                'pending_count': q.pending_count,
+            })
+        return Response(data)
     
     @action(detail=False, methods=['post'], url_path='grade-answer')
     def grade_answer(self, request):
@@ -1308,7 +1464,8 @@ class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelView
             attempt = answer.attempt
             total_score = attempt.answers.aggregate(total=Sum('points_earned'))['total'] or 0
             attempt.score = total_score
-            attempt.status = 'GRADED'
+            has_ungraded = attempt.answers.filter(question__question_type='SHORT_ANSWER', manually_graded=False).exists()
+            attempt.status = 'GRADED' if not has_ungraded else 'SUBMITTED'
             attempt.save()
 
             # ✅ NEW: recompute quarterly component so written_work_score updates
@@ -1455,7 +1612,7 @@ def start_quiz(request, quiz_id):
     
     # Return quiz questions
     questions = quiz.questions.all().order_by('order')
-    questions_data = QuizQuestionSerializer(questions, many=True).data
+    questions_data = StudentQuizQuestionSerializer(questions, many=True).data
     
     return Response({
         'attempt_id': attempt.id,
@@ -1468,7 +1625,7 @@ def start_quiz(request, quiz_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def submit_quiz(request, attempt_id):
-    """Submit quiz answers with optional file uploads"""
+    """Submit quiz answers with optional file uploads and time spent tracking"""
     if not hasattr(request.user, 'student_profile'):
         return Response({'error': 'Not a student'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -1543,13 +1700,24 @@ def submit_quiz(request, attempt_id):
         answer.save()
         total_score += float(answer.points_earned or 0.0)
 
-    # Update attempt
+    # Process time spent
+    time_spent_raw = request.data.get('time_spent')
+    if time_spent_raw is not None:
+        try:
+            attempt.time_spent = max(0, int(float(time_spent_raw)))
+        except (ValueError, TypeError):
+            attempt.time_spent = 0
+    else:
+        now = timezone.now()
+        attempt.time_spent = max(0, int((now - attempt.started_at).total_seconds())) if attempt.started_at else 0
+
+    # Determine status: if essay/short answer questions exist, require teacher grading
+    requires_manual_grading = attempt.quiz.questions.filter(question_type='SHORT_ANSWER').exists()
+    attempt.status = 'SUBMITTED' if requires_manual_grading else 'GRADED'
     attempt.submitted_at = timezone.now()
     attempt.score = float(total_score)
-    attempt.status = 'SUBMITTED'
     attempt.save()
 
-    # ✅ IMPORTANT: do NOT += to QuarterlyGrade here.
     # ✅ Recompute/overwrite using BEST attempt per quiz.
     quiz = attempt.quiz
     recalc_quarterly_component(
@@ -1561,9 +1729,17 @@ def submit_quiz(request, attempt_id):
 
     return Response({
         'message': 'Quiz submitted successfully',
+        'attempt_id': attempt.id,
         'score': float(total_score),
         'total_points': attempt.quiz.total_points,
-        'percentage': (total_score / attempt.quiz.total_points * 100) if attempt.quiz.total_points > 0 else 0
+        'percentage': round((total_score / attempt.quiz.total_points * 100), 1) if attempt.quiz.total_points > 0 else 0,
+        'status': attempt.status,
+        'time_spent': attempt.time_spent,
+        'requires_manual_grading': requires_manual_grading,
+        'quiz_title': attempt.quiz.title,
+        'subject_name': attempt.quiz.SubjectOffering.name if attempt.quiz.SubjectOffering else '',
+        'subject_id': attempt.quiz.SubjectOffering.id if attempt.quiz.SubjectOffering else None,
+        'is_closed': attempt.quiz.is_closed(),
     })
 
 
@@ -1579,6 +1755,45 @@ def student_quiz_attempts(request):
     ).order_by('-started_at')
     
     serializer = QuizAttemptSerializer(attempts, many=True, context={"request": request})
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def student_quiz_attempt_detail(request, attempt_id):
+    """Get a specific quiz attempt with answers and review data for the current student"""
+    if not hasattr(request.user, 'student_profile'):
+        return Response({'error': 'Not a student'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        attempt = QuizAttempt.objects.select_related('quiz__SubjectOffering', 'quiz__semester', 'student__user').get(
+            id=attempt_id,
+            student=request.user.student_profile
+        )
+    except QuizAttempt.DoesNotExist:
+        return Response({'error': 'Attempt not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = QuizAttemptSerializer(attempt, context={"request": request})
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def student_quiz_review(request, quiz_id):
+    """Get the latest completed attempt for review by quiz ID"""
+    if not hasattr(request.user, 'student_profile'):
+        return Response({'error': 'Not a student'}, status=status.HTTP_403_FORBIDDEN)
+    
+    attempt = QuizAttempt.objects.filter(
+        quiz_id=quiz_id,
+        student=request.user.student_profile,
+        status__in=['SUBMITTED', 'GRADED']
+    ).select_related('quiz__SubjectOffering', 'quiz__semester', 'student__user').order_by('-submitted_at', '-id').first()
+    
+    if not attempt:
+        return Response({'error': 'No completed attempt found for this quiz'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = QuizAttemptSerializer(attempt, context={"request": request})
     return Response(serializer.data)
 
 

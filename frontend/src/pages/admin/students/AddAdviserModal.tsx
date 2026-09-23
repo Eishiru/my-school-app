@@ -6,7 +6,7 @@ type Teacher = {
   first_name: string;
   last_name: string;
   email: string;
-  advisory?: string | null; // optional (if API provides)
+  advisory?: any;
 };
 
 type AddAdviserModalProps = {

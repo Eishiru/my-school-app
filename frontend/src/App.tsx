@@ -18,7 +18,8 @@ import  TeacherDashboard  from './pages/teacher/dashboard/TeacherDashboard.tsx';
 import SubjectQuizAnalytics from './pages/teacher/subjects/SubjectQuizAnalytics.tsx';
 
 // admin imports
-import AdminDashboard from './pages/admin/dasboard/AdminDashboard.tsx';
+import AdminDashboard from './pages/admin/dashboard/AdminDashboard.tsx';
+import AcademicSetupPage from './pages/admin/academic/AcademicSetupPage.tsx';
 import { FacultyList } from './pages/admin/faculty/departmentId.tsx';
 import { StudentClassList } from './pages/admin/students/Student_classlist.tsx';
 // import SectionsPage from './pages/admin/section/SectionPage.tsx';
@@ -48,7 +49,7 @@ import QuizGradingPage from './pages/teacher/quiz/QuizGradingPage.tsx';
 import StudentQuizList from './pages/student/quiz/StudentQuizList.tsx';
 import TakeQuiz from './pages/student/quiz/TakeQuiz.tsx';
 import QuizResult from './pages/student/quiz/QuizResult.tsx';
-import StudentGradeForecast from './pages/student/gradeForecast/StudentGradeForecast.tsx';
+import ReviewQuiz from './pages/student/quiz/ReviewQuiz.tsx';
 import StudentSemesterGrades from './pages/student/grades/StudentSemesterGrades.tsx';
 import SubjectLayout from './pages/teacher/subjects/SubjectLayout.tsx';
 import SubjectClassListTab from './pages/teacher/subjects/SubjectClassListTab.tsx';
@@ -96,8 +97,8 @@ function App() {
               <Route path="/student/grades/semester" element={<Navigate to="/student/report-card" replace />} />
               <Route path="/student/activities" element={<StudentQuizList />} />
               <Route path="/student/activities/:id/take" element={<TakeQuiz />} />
+              <Route path="/student/activities/:id/review" element={<ReviewQuiz />} />
               <Route path="/student/activities/result" element={<QuizResult />} />
-              {/* <Route path="/student/grade-forecast" element={<StudentGradeForecast />} /> */}
 
               {/* You can add more student pages here like /student/grades */}
             </Route>
@@ -147,6 +148,7 @@ function App() {
             {/* Admin Domain */}
             <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
+              <Route path="/admin/academic-setup" element={<AcademicSetupPage />} />
               <Route path="/admin/accounts" element={<AccountListPage />} />
               <Route path="/admin/accounts/create/teacher" element={<CreateTeacherAccountPage />} />
               <Route path="/admin/accounts/create/student" element={<CreateStudentAccountPage />} />

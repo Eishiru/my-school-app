@@ -15,6 +15,7 @@ import {
   Edit3,
   X,
   CalendarClock,
+  Clock,
 } from 'lucide-react';
 
 import {
@@ -36,38 +37,41 @@ function SkeletonLine({ w = 'w-full' }: { w?: string }) {
   );
 }
 
+function formatDuration(seconds?: number | null) {
+  if (!seconds || seconds <= 0) return '—';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s}s`;
+}
+
 function StatCard({
   icon,
   label,
   value,
   hint,
+  accent = "bg-indigo-50 text-indigo-600 border-indigo-100",
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   hint: string;
+  accent?: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-              {label}
-            </div>
-
-            <div className="mt-3 text-4xl font-black tracking-tight text-slate-900">
-              {value}
-            </div>
-
-            <div className="mt-2 text-xs text-slate-500">
-              {hint}
-            </div>
-          </div>
-
-          <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700">
-            {icon}
-          </div>
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-indigo-200 transition-all">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+            {label}
+          </span>
+          <p className="mt-1.5 text-2xl font-bold tracking-tight text-slate-900 font-mono">
+            {value}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-400">{hint}</p>
+        </div>
+        <div className={`p-2.5 rounded-xl border ${accent}`}>
+          {icon}
         </div>
       </div>
     </div>
@@ -447,36 +451,35 @@ export default function QuizGradingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-slate-50/50 pb-12">
       {/* Sticky Top Bar */}
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/85 backdrop-blur">
-        <div className="mx-auto px-4 md:px-6 py-4">
+      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white shadow-xs">
+        <div className="mx-auto max-w-7xl px-4 md:px-6 py-4">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() =>
                 navigate(-1)
               }
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
             >
               <ArrowLeft
-                size={16}
+                size={14}
               />
-
-              Back
+              <span>Back</span>
             </button>
 
             <div className="min-w-0">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
                 Manual Grading
-              </div>
+              </span>
 
-              <h1 className="truncate text-xl md:text-2xl font-black tracking-tight text-slate-900">
+              <h1 className="truncate text-xl font-bold tracking-tight text-slate-900">
                 {quiz?.title ??
                   'Quiz'}
               </h1>
 
-              <div className="mt-0.5 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+              <div className="mt-0.5 text-xs text-slate-500 font-medium">
                 Total Points:{' '}
                 {quiz?.total_points ??
                   '—'}{' '}
@@ -490,9 +493,9 @@ export default function QuizGradingPage() {
         </div>
       </div>
 
-      <div className="mx-auto px-4 md:px-6 py-6 md:py-10">
+      <div className="mx-auto max-w-7xl px-4 md:px-6 py-6 space-y-6">
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-3">
           <StatCard
             icon={
               <Users
@@ -504,6 +507,7 @@ export default function QuizGradingPage() {
               stats.total
             }
             hint="Total attempts"
+            accent="bg-indigo-50 text-indigo-600 border-indigo-100"
           />
 
           <StatCard
@@ -517,6 +521,7 @@ export default function QuizGradingPage() {
               stats.graded
             }
             hint="Marked as graded"
+            accent="bg-emerald-50 text-emerald-600 border-emerald-100"
           />
 
           <StatCard
@@ -530,31 +535,30 @@ export default function QuizGradingPage() {
               stats.pending
             }
             hint="Needs review"
+            accent="bg-amber-50 text-amber-600 border-amber-100"
           />
         </div>
 
         {/* Main Grid */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Student List */}
           <aside className="lg:col-span-1">
-            <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-slate-100">
-                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100 bg-slate-50/40">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
                   Students
-                </div>
+                </span>
 
-                <div className="mt-1 text-lg font-black text-slate-900">
-                  Select
-                  submission
+                <div className="mt-0.5 text-sm font-bold text-slate-900">
+                  Select Submission
                 </div>
               </div>
 
               <div className="max-h-[70vh] overflow-auto p-3 space-y-2">
                 {submissions.length ===
                 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                    No submissions
-                    yet.
+                  <div className="rounded-lg border border-slate-200/80 bg-slate-50 p-4 text-xs text-slate-500 text-center">
+                    No submissions yet.
                   </div>
                 ) : (
                   submissions.map(
@@ -577,26 +581,26 @@ export default function QuizGradingPage() {
                             )
                           }
                           className={[
-                            'w-full text-left rounded-2xl border p-4 transition',
+                            'w-full text-left rounded-xl border p-3.5 transition-all shadow-2xs',
                             active
-                              ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                              : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-900',
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                              : 'bg-white border-slate-200/80 hover:bg-slate-50 text-slate-900',
                           ].join(
                             ' '
                           )}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="font-black truncate">
+                              <div className="font-bold text-sm truncate">
                                 {
                                   submission.student_name
                                 }
                               </div>
 
                               <div
-                                className={`mt-1 text-xs ${
+                                className={`mt-0.5 text-xs ${
                                   active
-                                    ? 'text-white/80'
+                                    ? 'text-white/85'
                                     : 'text-slate-500'
                                 }`}
                               >
@@ -615,9 +619,9 @@ export default function QuizGradingPage() {
 
                             <span
                               className={[
-                                'shrink-0 inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-black',
+                                'shrink-0 inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold',
                                 active
-                                  ? 'bg-white/15 text-white'
+                                  ? 'bg-white/20 text-white'
                                   : statusChip(
                                       submission.status
                                     ),
@@ -633,24 +637,33 @@ export default function QuizGradingPage() {
                           </div>
 
                           <div
-                            className={`mt-2 flex items-center gap-2 text-xs ${
+                            className={`mt-2 flex flex-col gap-1 text-[11px] ${
                               active
-                                ? 'text-white/75'
+                                ? 'text-white/80'
                                 : 'text-slate-500'
                             }`}
                           >
-                            <CalendarClock
-                              size={
-                                14
-                              }
-                            />
+                            <div className="flex items-center gap-1.5 truncate">
+                              <CalendarClock
+                                size={12}
+                              />
+                              <span>
+                                {formatDT(
+                                  submission.submitted_at
+                                )}
+                              </span>
+                            </div>
 
-                            <span className="truncate">
-                              Submitted:{' '}
-                              {formatDT(
-                                submission.submitted_at
-                              )}
-                            </span>
+                            {submission.time_spent !== undefined && submission.time_spent !== null && (
+                              <div className="flex items-center gap-1.5">
+                                <Clock
+                                  size={12}
+                                />
+                                <span>
+                                  Time: {formatDuration(submission.time_spent)}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </button>
                       );
@@ -664,78 +677,70 @@ export default function QuizGradingPage() {
           {/* Grading Panel */}
           <section className="lg:col-span-3">
             {!selectedStudent ? (
-              <div className="rounded-3xl border border-slate-200 bg-white shadow-sm p-6">
-                <div className="text-sm font-black text-slate-900">
+              <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs p-8 text-center">
+                <div className="mx-auto w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mb-2.5">
+                  <Users size={18} />
+                </div>
+                <div className="text-sm font-bold text-slate-900">
                   Select a student
                 </div>
-
-                <div className="mt-1 text-sm text-slate-600">
-                  Choose a
-                  submission from
-                  the left to view
-                  answers.
-                </div>
+                <p className="mt-1 text-xs text-slate-500 max-w-xs mx-auto">
+                  Choose a submission from the list on the left to review and grade responses.
+                </p>
               </div>
             ) : (
-              <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
                 {/* Selected Student Header */}
-                <div className="p-6 border-b border-slate-100">
+                <div className="p-5 border-b border-slate-100 bg-slate-50/40">
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                        Selected
+                    <div className="min-w-0 space-y-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+                        Selected Student
+                      </span>
+
+                      <h2 className="text-xl font-bold tracking-tight text-slate-900">
+                        {selectedStudent.student_name}
+                      </h2>
+
+                      <div className="text-xs text-slate-500">
+                        {selectedStudent.student_email}
                       </div>
 
-                      <div className="mt-1 text-2xl font-black tracking-tight text-slate-900">
-                        {
-                          selectedStudent.student_name
-                        }
-                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2.5 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-1.5">
+                          <CalendarClock size={13} className="text-slate-400" />
+                          <span>Submitted: {formatDT(selectedStudent.submitted_at)}</span>
+                        </span>
 
-                      <div className="mt-1 text-sm text-slate-600">
-                        {
-                          selectedStudent.student_email
-                        }
-                      </div>
-
-                      <div className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                        Submitted:{' '}
-                        {formatDT(
-                          selectedStudent.submitted_at
+                        {selectedStudent.time_spent !== undefined && selectedStudent.time_spent !== null && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                            <Clock size={12} className="text-slate-400" />
+                            <span>Time: {formatDuration(selectedStudent.time_spent)}</span>
+                          </span>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="rounded-xl border border-slate-200/80 bg-white px-4 py-2 text-right shadow-2xs">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                           Total Score
                         </div>
 
-                        <div className="mt-1 text-xl font-black text-slate-900">
-                          {(
-                            selectedStudent.score ??
-                            0
-                          ).toFixed(
-                            1
-                          )}{' '}
-                          <span className="text-sm font-black text-slate-400">
-                            /{' '}
-                            {quiz?.total_points ??
-                              '—'}
+                        <div className="mt-0.5 text-xl font-bold font-mono text-slate-900">
+                          {(selectedStudent.score ?? 0).toFixed(1)}{' '}
+                          <span className="text-xs font-semibold text-slate-400">
+                            / {quiz?.total_points ?? '—'}
                           </span>
                         </div>
                       </div>
 
                       <span
-                        className={`inline-flex items-center rounded-full px-3 py-2 text-[11px] font-black ${statusChip(
+                        className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold ${statusChip(
                           selectedStudent.status
                         )}`}
                       >
-                        {(
-                          selectedStudent.status ||
-                          '—'
-                        ).toUpperCase()}
+                        {(selectedStudent.status || '—').toUpperCase()}
                       </span>
                     </div>
                   </div>
@@ -908,61 +913,44 @@ function AnswerGradingCard({
     };
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white overflow-hidden">
+    <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
       {/* Question Header */}
-      <div className="p-5 border-b border-slate-100">
+      <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/40">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <div
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${meta.chip}`}
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs font-semibold ${meta.chip}`}
               >
                 {meta.icon}
-
                 {meta.label}
-              </div>
+              </span>
 
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                Question{' '}
-                {index + 1}
-              </div>
+              <span className="text-xs font-semibold text-slate-500">
+                Question {index + 1}
+              </span>
 
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                Worth{' '}
-                {
-                  answer.question_points
-                }{' '}
-                pt
-                {answer.question_points !==
-                1
-                  ? 's'
-                  : ''}
-              </div>
+              <span className="text-xs text-slate-400">
+                • {answer.question_points} pt{answer.question_points !== 1 ? 's' : ''}
+              </span>
             </div>
 
-            <div className="mt-2 text-sm font-bold text-slate-900">
-              {
-                answer.question_text
-              }
+            <div className="mt-1.5 text-sm font-semibold text-slate-900">
+              {answer.question_text}
             </div>
           </div>
 
           {!isEditing && (
-            <div className="flex items-center gap-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5">
-                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-2xs text-right">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Points
                 </div>
 
-                <div className="mt-0.5 text-lg font-black text-slate-900">
-                  {
-                    answer.points_earned
-                  }{' '}
-                  <span className="text-sm font-black text-slate-400">
-                    /{' '}
-                    {
-                      answer.question_points
-                    }
+                <div className="text-base font-bold font-mono text-slate-900">
+                  {answer.points_earned}{' '}
+                  <span className="text-xs font-semibold text-slate-400">
+                    / {answer.question_points}
                   </span>
                 </div>
               </div>
@@ -977,13 +965,12 @@ function AnswerGradingCard({
                 disabled={
                   saving
                 }
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-60 transition-colors"
               >
                 <Edit3
-                  size={16}
+                  size={14}
                 />
-
-                Edit
+                <span>Edit</span>
               </button>
             </div>
           )}
@@ -991,114 +978,72 @@ function AnswerGradingCard({
       </div>
 
       {/* Student Answer */}
-      <div className="p-5 bg-slate-50 border-b border-slate-100">
-        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+      <div className="p-4 sm:p-5 bg-slate-50/50 border-b border-slate-100">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
           Student Answer
         </div>
 
         {answer.text_answer ? (
-          <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 whitespace-pre-wrap">
-            {
-              answer.text_answer
-            }
+          <div className="mt-2 rounded-lg border border-slate-200/80 bg-white p-3.5 text-xs text-slate-800 whitespace-pre-wrap shadow-2xs">
+            {answer.text_answer}
           </div>
         ) : null}
 
-        {answer.choices &&
-        answer.choices.length >
-          0 ? (
+        {answer.choices && answer.choices.length > 0 ? (
           <div className="mt-3 space-y-2">
-            {[
-              ...answer.choices,
-            ]
-              .sort(
-                (a, b) =>
-                  a.order -
-                  b.order
-              )
-              .map(
-                (
-                  choice
-                ) => {
-                  const isSelected =
-                    choice.id ===
-                    answer.selected_choice;
+            {[...answer.choices]
+              .sort((a, b) => a.order - b.order)
+              .map((choice) => {
+                const isSelected = choice.id === answer.selected_choice;
+                const isCorrect = choice.id === answer.correct_choice;
 
-                  const isCorrect =
-                    choice.id ===
-                    answer.correct_choice;
+                let style = 'border-slate-200/80 bg-white';
+                if (isCorrect) {
+                  style = 'border-emerald-300 bg-emerald-50/60 text-emerald-950';
+                }
+                if (isSelected && !isCorrect) {
+                  style = 'border-rose-300 bg-rose-50/60 text-rose-950';
+                }
 
-                  let style =
-                    'border-slate-200 bg-white';
+                return (
+                  <div
+                    key={choice.id}
+                    className={`rounded-lg border p-2.5 text-xs ${style}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium">
+                        {choice.choice_text}
+                      </span>
 
-                  if (
-                    isCorrect
-                  ) {
-                    style =
-                      'border-emerald-300 bg-emerald-50';
-                  }
-
-                  if (
-                    isSelected &&
-                    !isCorrect
-                  ) {
-                    style =
-                      'border-rose-300 bg-rose-50';
-                  }
-
-                  return (
-                    <div
-                      key={
-                        choice.id
-                      }
-                      className={`rounded-2xl border p-3 text-sm ${style}`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-medium">
-                          {
-                            choice.choice_text
-                          }
-                        </span>
-
-                        <div className="flex items-center gap-2 text-xs font-bold">
-                          {isSelected && (
-                            <span className="text-indigo-600">
-                              Student
-                              Answer
-                            </span>
-                          )}
-
-                          {isCorrect && (
-                            <span className="text-emerald-600">
-                              Correct
-                              Answer
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex items-center gap-2 text-[11px] font-semibold">
+                        {isSelected && (
+                          <span className="text-indigo-600">
+                            Student Answer
+                          </span>
+                        )}
+                        {isCorrect && (
+                          <span className="text-emerald-600 font-bold">
+                            Correct Answer
+                          </span>
+                        )}
                       </div>
                     </div>
-                  );
-                }
-              )}
+                  </div>
+                );
+              })}
           </div>
         ) : null}
 
         {answer.answer_file_url ? (
           <div className="mt-3">
             <a
-              href={
-                answer.answer_file_url
-              }
+              href={answer.answer_file_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
             >
-              <Paperclip
-                size={16}
-              />
-
-              View uploaded
-              file
+              <Paperclip size={14} />
+              <span>View uploaded file</span>
             </a>
           </div>
         ) : null}
@@ -1106,133 +1051,87 @@ function AnswerGradingCard({
         {!answer.text_answer &&
         !answer.selected_choice &&
         !answer.answer_file_url ? (
-          <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+          <div className="mt-2 rounded-lg border border-slate-200/80 bg-white p-3 text-xs text-slate-500">
             No answer content.
           </div>
         ) : null}
       </div>
 
       {/* Grading */}
-      <div className="p-5">
-        {!isEditing &&
-        answer.manually_graded ? (
+      <div className="p-4 sm:p-5">
+        {!isEditing && answer.manually_graded ? (
           <div>
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                 Teacher Feedback
               </div>
 
               {answer.graded_at ? (
-                <div className="text-xs text-slate-500">
-                  Graded{' '}
-                  {formatDT(
-                    answer.graded_at
-                  )}
-
-                  {answer.graded_by_name
-                    ? ` • ${answer.graded_by_name}`
-                    : ''}
+                <div className="text-xs text-slate-400">
+                  Graded {formatDT(answer.graded_at)}
+                  {answer.graded_by_name ? ` • ${answer.graded_by_name}` : ''}
                 </div>
               ) : null}
             </div>
 
             {answer.teacher_feedback ? (
-              <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 whitespace-pre-wrap">
-                {
-                  answer.teacher_feedback
-                }
+              <div className="mt-2 rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 text-xs text-slate-700 whitespace-pre-wrap">
+                {answer.teacher_feedback}
               </div>
             ) : (
-              <div className="mt-2 text-sm text-slate-500">
-                No feedback
-                provided.
+              <div className="mt-1 text-xs text-slate-400">
+                No feedback provided.
               </div>
             )}
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-12">
             <div className="md:col-span-4">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                Points Earned
-                (max{' '}
-                {
-                  answer.question_points
-                }
-                )
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Points Earned (max {answer.question_points})
               </div>
 
-              <div className="mt-2">
+              <div className="mt-1.5">
                 <input
                   type="number"
                   min={0}
-                  max={
-                    answer.question_points
-                  }
+                  max={answer.question_points}
                   step="0.5"
-                  value={
-                    points
-                  }
-                  onChange={(
-                    e
-                  ) =>
-                    setPoints(
-                      e.target
-                        .value
-                    )
-                  }
+                  value={points}
+                  onChange={(e) => setPoints(e.target.value)}
                   className={[
-                    'w-full rounded-2xl border px-4 py-3 text-sm font-bold outline-none',
+                    'w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none transition-all shadow-2xs',
                     overMax
-                      ? 'border-rose-300 bg-rose-50'
-                      : 'border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500',
-                  ].join(
-                    ' '
-                  )}
-                  disabled={
-                    saving
-                  }
+                      ? 'border-rose-300 bg-rose-50 focus:ring-2 focus:ring-rose-500/20'
+                      : 'border-slate-200/80 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500',
+                  ].join(' ')}
+                  disabled={saving}
                 />
 
-                <div className="mt-2 text-xs text-slate-500">
+                <div className="mt-1 text-[11px] text-slate-500">
                   {overMax ? (
-                    <span className="text-rose-600 font-bold">
-                      Points cannot
-                      exceed max.
+                    <span className="text-rose-600 font-semibold">
+                      Points cannot exceed max.
                     </span>
                   ) : (
-                    <span>
-                      Use 0.5 steps
-                      if needed.
-                    </span>
+                    <span>Use 0.5 steps if needed.</span>
                   )}
                 </div>
               </div>
             </div>
 
             <div className="md:col-span-8">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                Feedback
-                (optional)
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Feedback (optional)
               </div>
 
               <textarea
-                value={
-                  feedback
-                }
-                onChange={(
-                  e
-                ) =>
-                  setFeedback(
-                    e.target
-                      .value
-                  )
-                }
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
                 rows={3}
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                className="mt-1.5 w-full rounded-lg border border-slate-200/80 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition-all"
                 placeholder="Write feedback to the student..."
-                disabled={
-                  saving
-                }
+                disabled={saving}
               />
             </div>
 
@@ -1241,68 +1140,40 @@ function AnswerGradingCard({
                 <button
                   type="button"
                   onClick={() => {
-                    setIsEditing(
-                      false
-                    );
-
+                    setIsEditing(false);
                     resetToSaved();
                   }}
-                  disabled={
-                    saving
-                  }
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs disabled:opacity-60 transition-colors"
                 >
-                  <X
-                    size={16}
-                  />
-
-                  Cancel
+                  <X size={14} />
+                  <span>Cancel</span>
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() =>
-                    setIsEditing(
-                      false
-                    )
-                  }
-                  disabled={
-                    saving
-                  }
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  onClick={() => setIsEditing(false)}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs disabled:opacity-60 transition-colors"
                 >
-                  <X
-                    size={16}
-                  />
-
-                  Close
+                  <X size={14} />
+                  <span>Close</span>
                 </button>
               )}
 
               <button
                 type="button"
-                onClick={
-                  handleSubmit
-                }
-                disabled={
-                  !canSave
-                }
+                onClick={handleSubmit}
+                disabled={!canSave}
                 className={[
-                  'inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black text-white transition',
+                  'inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors',
                   canSave
-                    ? 'bg-slate-900 hover:bg-indigo-600'
+                    ? 'bg-indigo-600 hover:bg-indigo-700'
                     : 'bg-slate-300 cursor-not-allowed',
-                ].join(
-                  ' '
-                )}
+                ].join(' ')}
               >
-                <Save
-                  size={16}
-                />
-
-                {saving
-                  ? 'Saving…'
-                  : 'Save Grade'}
+                <Save size={14} />
+                <span>{saving ? 'Saving…' : 'Save Grade'}</span>
               </button>
             </div>
           </div>

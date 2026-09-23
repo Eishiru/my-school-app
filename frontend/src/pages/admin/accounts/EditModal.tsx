@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { X, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { X, Eye, EyeOff, ShieldCheck, Loader2 } from "lucide-react";
 
 type EditModalProps = {
   isOpen: boolean;
@@ -8,6 +8,7 @@ type EditModalProps = {
   onClose: () => void;
   onSave: (e: React.FormEvent) => void;
   setSelectedItem: React.Dispatch<React.SetStateAction<any>>;
+  isSaving?: boolean;
 };
 
 const DEPARTMENTS = [
@@ -52,6 +53,7 @@ const EditModal = ({
   onClose,
   onSave,
   setSelectedItem,
+  isSaving,
 }: EditModalProps) => {
   if (!isOpen || !selectedItem) return null;
 
@@ -73,6 +75,19 @@ const EditModal = ({
     setErrors({});
     // don’t force-clear selectedItem.password here; parent logic already ignores empty/undefined
   }, [isOpen, selectedItem?.id]);
+
+  const studentAge = useMemo(() => {
+    if (!selectedItem?.birthdate) return selectedItem?.age ?? null;
+    const birth = new Date(selectedItem.birthdate);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age >= 0 ? age : null;
+  }, [selectedItem?.birthdate, selectedItem?.age]);
 
   const passwordValue = (selectedItem?.password ?? "") as string;
 
@@ -113,16 +128,16 @@ const EditModal = ({
   };
 
   const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     // Block submit only if password change is enabled & invalid
     const ok = validatePasswordSection();
     if (!ok) {
-      e.preventDefault();
       return;
     }
 
     // If user DIDN'T opt in to password change, ensure we don't accidentally send a stale password
-    if (!changePassword) {
-      setSelectedItem((prev: any) => ({ ...prev, password: undefined }));
+    if (!changePassword && selectedItem) {
+      delete selectedItem.password;
     }
 
     onSave(e);
@@ -202,7 +217,6 @@ const EditModal = ({
                 Department
               </label>
               <select
-                required
                 name="department"
                 value={selectedItem.department || ""}
                 onChange={(e) =>
@@ -210,9 +224,7 @@ const EditModal = ({
                 }
                 className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
               >
-                <option value="" disabled>
-                  Select department
-                </option>
+                <option value="">Select department (Optional)</option>
                 {DEPARTMENTS.map((dept) => (
                   <option key={dept} value={dept}>
                     {dept}
@@ -223,29 +235,83 @@ const EditModal = ({
           )}
 
           {activeTab === "student" && (
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">
-                Grade Level
-              </label>
-              <select
-                required
-                value={selectedItem.gradeLevel || ""}
-                onChange={(e) =>
-                  setSelectedItem({
-                    ...selectedItem,
-                    gradeLevel: e.target.value,
-                  })
-                }
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">Select Grade</option>
-                {["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"].map((grade) => (
-                  <option key={grade} value={grade}>
-                    {grade.replace("GRADE_", "Grade ")}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">
+                  Grade Level
+                </label>
+                <select
+                  required
+                  value={
+                    selectedItem.gradeLevel
+                      ? String(selectedItem.gradeLevel).startsWith("GRADE_")
+                        ? selectedItem.gradeLevel
+                        : `GRADE_${String(selectedItem.gradeLevel).replace(/\D/g, "")}`
+                      : ""
+                  }
+                  onChange={(e) =>
+                    setSelectedItem({
+                      ...selectedItem,
+                      gradeLevel: e.target.value,
+                    })
+                  }
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select Grade</option>
+                  {["GRADE_7", "GRADE_8", "GRADE_9", "GRADE_10"].map((grade) => (
+                    <option key={grade} value={grade}>
+                      {grade.replace("GRADE_", "Grade ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-slate-400">
+                    Sex
+                  </label>
+                  <select
+                    value={selectedItem.gender || ""}
+                    onChange={(e) =>
+                      setSelectedItem({
+                        ...selectedItem,
+                        gender: e.target.value,
+                      })
+                    }
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select Sex (Optional)</option>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">
+                      Birthdate
+                    </label>
+                    {studentAge !== null && (
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                        Age: {studentAge} yrs
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="date"
+                    value={selectedItem.birthdate || ""}
+                    onChange={(e) =>
+                      setSelectedItem({
+                        ...selectedItem,
+                        birthdate: e.target.value,
+                      })
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 text-slate-700"
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           {/* Password (optional) */}
@@ -392,15 +458,18 @@ const EditModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 text-slate-600 font-semibold rounded-lg"
+              disabled={isSaving}
+              className="flex-1 py-3 text-slate-600 font-semibold rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-3 bg-indigo-600 text-white font-semibold rounded-lg"
+              disabled={isSaving}
+              className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
             >
-              Save Changes
+              {isSaving && <Loader2 size={16} className="animate-spin" />}
+              {isSaving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </form>

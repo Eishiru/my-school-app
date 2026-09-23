@@ -1,5 +1,5 @@
 import { authFetch } from "./apiClient";
-import type { AdvisoryStudent, ApplySemesterWeightsPayload, BatchRecordQuizScoresPayload, BatchRecordQuizScoresResponse, CreateQuizPayload, CreateQuizQuestionPayload, CreateQuizResponse, DeleteQuizQuestionPayload, DeleteSemesterGradePayload, DeleteSubjectFilePayload, DeleteTeacherQuizPayload, GradeAnswerPayload, QuizItemAnalysisData, RecentQuizGrade, SaveSemesterGradePayload, Semester, SemesterGrade, SemesterSummaryRow, StudentDetail, StudentSubmission, TeacherAdvisoryDetail, TeacherQuiz, TeacherQuizActivity, TeacherQuizQuestion, TeacherSemesterGrade, TeacherSubjectFile, TeacherSubjectOffering, TeacherSubjectStudent, TeacherSubjectSubmissionDetail, UpdateQuizQuestionPayload, UpdateQuizStatusPayload, UpdateQuizTimesPayload, UploadSubjectFilePayload } from "../types/teacherTypes";
+import type { AdvisoryStudent, ApplySemesterWeightsPayload, BatchRecordQuizScoresPayload, BatchRecordQuizScoresResponse, CreateQuizPayload, CreateQuizQuestionPayload, CreateQuizResponse, DeleteQuizQuestionPayload, DeleteSemesterGradePayload, DeleteSubjectFilePayload, DeleteTeacherQuizPayload, GradeAnswerPayload, QuizItemAnalysisData, RecentQuizGrade, SaveSemesterGradePayload, Semester, SemesterGrade, SemesterSummaryRow, StudentDetail, StudentSubmission, TeacherAdvisoryDetail, TeacherPendingGradingTask, TeacherQuiz, TeacherQuizActivity, TeacherQuizQuestion, TeacherSemesterGrade, TeacherSubjectFile, TeacherSubjectOffering, TeacherSubjectStudent, TeacherSubjectSubmissionDetail, UpdateQuizQuestionPayload, UpdateQuizStatusPayload, UpdateQuizTimesPayload, UploadSubjectFilePayload } from "../types/teacherTypes";
 
 export async function getTeacherSubjects(): Promise<TeacherSubjectOffering[]> {
   const response = await authFetch("/subject-offerings/", {
@@ -284,6 +284,22 @@ export async function getTeacherQuizzes(): Promise<TeacherQuiz[]> {
   return Array.isArray(data)
     ? data
     : data.results ?? [];
+}
+
+export async function getTeacherPendingGrading(): Promise<TeacherPendingGradingTask[]> {
+  const response = await authFetch(
+    "/teacher/quizzes/pending-grading/",
+    {
+      method: "GET",
+    }
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : data.results ?? [];
 }
 
 export async function getTeacherQuizAttempts(
@@ -584,6 +600,31 @@ export async function deleteQuizQuestion({
   }
 }
 
+function formatApiErrorMessage(errorData: unknown, fallback: string): string {
+  if (!errorData) return fallback;
+  if (typeof errorData === "string") return errorData;
+  if (typeof errorData === "object" && !Array.isArray(errorData)) {
+    const obj = errorData as Record<string, unknown>;
+    if (typeof obj.detail === "string") return obj.detail;
+    if (typeof obj.error === "string") return obj.error;
+    if (typeof obj.message === "string") return obj.message;
+    const messages = Object.entries(obj)
+      .map(([field, value]) => {
+        const msg = Array.isArray(value)
+          ? value.map((v) => (typeof v === "object" ? JSON.stringify(v) : String(v))).join(", ")
+          : typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value);
+        return field === "detail" || field === "non_field_errors" ? msg : `${field}: ${msg}`;
+      })
+      .filter(Boolean);
+    if (messages.length > 0) {
+      return messages.join("\n");
+    }
+  }
+  return fallback;
+}
+
 export async function createTeacherQuiz(
   payload: CreateQuizPayload
 ): Promise<CreateQuizResponse> {
@@ -605,9 +646,10 @@ export async function createTeacherQuiz(
       .catch(() => null);
 
     throw new Error(
-      errorData?.detail ||
-        errorData?.error ||
+      formatApiErrorMessage(
+        errorData,
         `Failed to create quiz: ${response.status}`
+      )
     );
   }
 

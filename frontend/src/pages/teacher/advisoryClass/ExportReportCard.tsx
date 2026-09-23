@@ -12,6 +12,7 @@ import {
   useStudentDetail,
   useStudentSemesterSummary,
 } from "../../../hooks/useTeacherSubjects";
+import { useActiveAcademicTerm } from "../../../hooks/useAdminData";
 import {
   getStudentDetail,
   getStudentSemesterSummary,
@@ -136,12 +137,34 @@ export function buildCoreValuesBody(
   });
 }
 
+export function formatGradeLevel(grade: string | number | undefined | null): string {
+  if (!grade) return "";
+  const str = String(grade).trim();
+  if (str.toUpperCase().startsWith("GRADE_")) {
+    return str.substring(6).trim();
+  }
+  if (/^grade\s+/i.test(str)) {
+    return str.replace(/^grade\s+/i, "").trim();
+  }
+  return str;
+}
+
+export function formatSectionName(sec: string | undefined | null): string {
+  if (!sec) return "";
+  let str = String(sec).trim();
+  if (/^(Grade\s+\w+|GRADE_\w+)\s*-\s*/i.test(str)) {
+    str = str.replace(/^(Grade\s+\w+|GRADE_\w+)\s*-\s*/i, "").trim();
+  }
+  return str;
+}
+
 export async function generateSF9PDF(params: {
   studentId: string | number;
   studentInfo?: {
     name?: string;
     age?: number | string;
     sex?: string;
+    grade?: string | number;
     section?: string;
     lrn?: string;
     schoolYear?: string;
@@ -466,36 +489,36 @@ export async function generateSF9PDF(params: {
   });
   pdf.setFontSize(10);
   pdf.text(
-    `School Year: ${params.studentInfo?.schoolYear || "2025-2026"}`,
+    `School Year: ${params.studentInfo?.schoolYear || "2026-2027"}`,
     centerX + 200,
     205,
     { align: "center" },
   );
 
-  const fullName =
-    params.studentInfo?.name ||
-    (loadedStudent
-      ? `${loadedStudent.first_name} ${loadedStudent.last_name}`
-      : "") ||
-    "____________________________________________________";
-  const grade = loadedStudent?.grade_level ? String(loadedStudent.grade_level) : "";
-  const sectionName = params.studentInfo?.section || loadedStudent?.section_name || "";
+  const fullName = params.studentInfo?.name || (loadedStudent ? `${loadedStudent.first_name} ${loadedStudent.last_name}` : "") || "____________________________________________________";
+  const rawGrade = params.studentInfo?.grade || loadedStudent?.grade_level || "";
+  const grade = formatGradeLevel(rawGrade);
+  const rawSection = params.studentInfo?.section || loadedStudent?.section_name || "";
+  const sectionName = formatSectionName(rawSection);
   const lrn = params.studentInfo?.lrn || loadedStudent?.school_id || "";
-  const sex = params.studentInfo?.sex || loadedStudent?.sex || "";
-  const age = params.studentInfo?.age || loadedStudent?.age || "";
+  const rawSex = params.studentInfo?.sex || loadedStudent?.sex || loadedStudent?.gender || "";
+  const sex = rawSex ? (rawSex.toUpperCase() === "MALE" ? "Male" : rawSex.toUpperCase() === "FEMALE" ? "Female" : rawSex) : "";
+  const age = params.studentInfo?.age ?? loadedStudent?.age ?? "";
 
   pdf.setFont("helvetica", "normal");
-  pdf.text(`Name: ${fullName}`, rightColX, 230);
-  pdf.text(`Age: ${age || "___________"}`, rightColX, 250);
-  pdf.text(`Sex: ${sex || "___________"}`, centerX + 220, 250);
-  pdf.text(`Grade: ${grade || "________"}`, rightColX, 270);
-  pdf.text(`Section: ${sectionName || "_______"}`, centerX + 180, 270);
-  pdf.text(`LRN: ${lrn || "___________"}`, centerX + 280, 270);
+  pdf.setFontSize(10);
+  pdf.text(`Name: ${fullName}`, rightColX, 225);
+  pdf.text(`LRN: ${lrn || "___________"}`, rightColX + 160, 225);
+  pdf.text(`Age: ${age || "___________"}`, rightColX, 245);
+  pdf.text(`Sex: ${sex || "___________"}`, rightColX + 160, 245);
+  pdf.text(`Grade: ${grade || "________"}`, rightColX, 265);
+  pdf.text(`Section: ${sectionName || "_______"}`, rightColX + 160, 265);
+  
 
   pdf.setFontSize(9);
   const message =
     "Dear Parent, \n\nThis report card shows the ability and the progress your child has made in the different learning areas as well as his/her progress in core values.\n\nThe school welcomes you should you desire to know more about your child's progress.";
-  pdf.text(message, rightColX, 300, { maxWidth: 350, align: "justify" });
+  pdf.text(message, rightColX, 300, { maxWidth: 350, align:"left" });
 
   pdf.line(rightColX + 200, 380, rightColX + 340, 380);
   pdf.text("Teacher", rightColX + 270, 390, { align: "center" });
@@ -548,6 +571,7 @@ export default function ExportReportCardPDF(): JSX.Element {
 
   const sid = Number(studentId) || 0;
   const queryClient = useQueryClient();
+  const { data: activeTerm } = useActiveAcademicTerm();
 
   const {
     data: student = null,
@@ -587,6 +611,7 @@ export default function ExportReportCardPDF(): JSX.Element {
     name: "",
     age: "" as number | "",
     sex: "",
+    grade: "",
     section: "",
     lrn: "",
     schoolYear: "",
@@ -599,17 +624,31 @@ export default function ExportReportCardPDF(): JSX.Element {
     [coreValues],
   );
 
-  // ✅ Updated useEffect to sync Page 2 data
+  // ✅ Updated useEffect to sync Page 2 data & active term
   useEffect(() => {
+    const currentSY = activeTerm?.school_year?.name || "";
     if (!passed) {
       console.warn("No state passed from Page 2");
+      if (currentSY) {
+        setManualStudent((prev) => ({
+          ...prev,
+          schoolYear: prev.schoolYear || currentSY,
+        }));
+      }
       return;
     }
 
     if (passed.attendance) setAttendance(passed.attendance);
     if (passed.observedValues) setCoreValues(passed.observedValues);
-    if (passed.studentInfo) setManualStudent(passed.studentInfo);
-  }, [passed]);
+    if (passed.studentInfo) {
+      setManualStudent({
+        ...passed.studentInfo,
+        grade: formatGradeLevel(passed.studentInfo.grade),
+        section: formatSectionName(passed.studentInfo.section),
+        schoolYear: passed.studentInfo.schoolYear || currentSY,
+      });
+    }
+  }, [passed, activeTerm]);
 
   // Build rows for PDF + preview
   const learningRows = useMemo(() => {
@@ -642,7 +681,13 @@ export default function ExportReportCardPDF(): JSX.Element {
   const handleExport = async (): Promise<void> => {
     await generateSF9PDF({
       studentId: sid,
-      studentInfo: manualStudent,
+      studentInfo: {
+        ...manualStudent,
+        grade: formatGradeLevel(manualStudent.grade || student?.grade_level),
+        section: formatSectionName(manualStudent.section || student?.section_name),
+        schoolYear:
+          manualStudent.schoolYear || activeTerm?.school_year?.name || "2026-2027",
+      },
       attendance,
       observedValues: coreValues,
       token,
@@ -1069,7 +1114,7 @@ export default function ExportReportCardPDF(): JSX.Element {
                       </h1>
                       <p className="text-sm font-bold">(SF 9 - ES)</p>
                       <p className="text-md font-bold mt-4 underline decoration-2 underline-offset-4">
-                        School Year: {manualStudent.schoolYear || ""}
+                        School Year: {manualStudent.schoolYear || activeTerm?.school_year?.name || "2026-2027"}
                       </p>
                     </div>
 
@@ -1092,21 +1137,21 @@ export default function ExportReportCardPDF(): JSX.Element {
                         <div className="flex border-b border-black pb-1 flex-1">
                           <span className="font-bold w-12">Sex:</span>
                           <span>
-                            {manualStudent.sex ?? student?.sex ?? "—"}
+                            {manualStudent.sex ?? (student?.sex || student?.gender) ?? "—"}
                           </span>
                         </div>
                       </div>
-                      <div className="flex gap-4">
+                      <div className="flex gap-10">
                         <div className="flex border-b border-black pb-1 flex-1">
                           <span className="font-bold w-16">Grade:</span>
-                          <span>{student?.grade_level ?? "—"}</span>
+                          <span>
+                            {formatGradeLevel(manualStudent.grade || student?.grade_level) || "—"}
+                          </span>
                         </div>
                         <div className="flex border-b border-black pb-1 flex-1">
                           <span className="font-bold w-16">Section:</span>
                           <span>
-                            {manualStudent.section ??
-                              student?.section_name ??
-                              "—"}
+                            {formatSectionName(manualStudent.section || student?.section_name) || "—"}
                           </span>
                         </div>
                       </div>

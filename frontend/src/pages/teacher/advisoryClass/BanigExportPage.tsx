@@ -25,6 +25,7 @@ export interface GenerateBanigPDFOptions {
   teacher?: TeacherAdvisoryDetail | null;
   students?: AdvisoryStudent[];
   token?: string | null;
+  schoolYear?: string;
 }
 
 export async function generateBanigPDF(options?: GenerateBanigPDFOptions) {
@@ -57,7 +58,7 @@ export async function generateBanigPDF(options?: GenerateBanigPDFOptions) {
 
   const sectionId = teacher.advisory.id;
   const adviserName = `${teacher.first_name} ${teacher.last_name}`;
-  const schoolYear = "2024-2025";
+  const schoolYear = options?.schoolYear || "2026-2027";
   const curriculumYear = teacher.advisory.grade_level;
 
   // =============================

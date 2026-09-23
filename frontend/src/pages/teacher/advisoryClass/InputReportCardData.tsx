@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, ArrowLeft, Calendar, Heart, User, GraduationCap, Eye } from "lucide-react";
+import { Download, ArrowLeft, Calendar, Heart, User, GraduationCap, Eye, ShieldCheck } from "lucide-react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useStudentDetail } from "../../../hooks/useTeacherSubjects";
-import { generateSF9PDF } from "./ExportReportCard";
+import { useActiveAcademicTerm } from "../../../hooks/useAdminData";
+import { generateSF9PDF, formatGradeLevel, formatSectionName } from "./ExportReportCard";
 
 type AttendanceState = {
     schoolDays: number[];
@@ -23,6 +24,7 @@ export default function InputReportCardData() {
     const queryClient = useQueryClient();
 
     const { data: studentDetail } = useStudentDetail(sid, sid > 0);
+    const { data: activeTerm } = useActiveAcademicTerm();
     
     const [loading, setLoading] = useState(false);
     const [downloading, setDownloading] = useState(false);
@@ -30,12 +32,15 @@ export default function InputReportCardData() {
     const [activeSemester, setActiveSemester] = useState<string>("Semester 1");
     const passedStudent = (location.state as any)?.student || null;
 
-    const [schoolYear, setSchoolYear] = useState("2025-2026");
+    const [schoolYear, setSchoolYear] = useState("");
     const [name, setName] = useState("");
     const [age, setAge] = useState<number | "">("");
+    const [grade, setGrade] = useState("");
     const [section, setSection] = useState("");
     const [sex, setSex] = useState("");
     const [lrn, setLrn] = useState("");
+    const [hasBackendAge, setHasBackendAge] = useState(false);
+    const [hasBackendSex, setHasBackendSex] = useState(false);
 
     const CORE_VALUES_DATA = [
         { value: "1. Maka-Diyos", statements: ["Expresses one's spiritual beliefs while respecting the spiritual beliefs of others", "Shows adherence to ethical principles by upholding truth"] },
@@ -61,23 +66,61 @@ export default function InputReportCardData() {
     useEffect(() => {
         if (passedStudent) {
             setName(passedStudent.name || "");
-            setSection(passedStudent.section || passedStudent.Section || "");
             setLrn(passedStudent.lrn || "");
-            setAge(passedStudent.age ?? "");
-            setSex(passedStudent.sex || "");
+            const g = formatGradeLevel(passedStudent.grade);
+            if (g) setGrade(g);
+            const s = formatSectionName(passedStudent.section || passedStudent.Section);
+            if (s) setSection(s);
+            if (passedStudent.age != null && passedStudent.age !== "") {
+                setAge(Number(passedStudent.age));
+                setHasBackendAge(true);
+            }
+            const pSex = passedStudent.sex || passedStudent.gender;
+            if (pSex) {
+                const formatted = pSex.toUpperCase() === "MALE" ? "Male" : pSex.toUpperCase() === "FEMALE" ? "Female" : pSex;
+                setSex(formatted);
+                setHasBackendSex(true);
+            }
+            if (passedStudent.schoolYear) {
+                setSchoolYear(passedStudent.schoolYear);
+            }
         }
     }, [passedStudent]);
+
+    useEffect(() => {
+        if (activeTerm?.school_year?.name) {
+            setSchoolYear(prev => (!prev || prev === "2025-2026") ? activeTerm.school_year!.name : prev);
+        }
+        if (activeTerm?.active_semester) {
+            const semDisplay = activeTerm.active_semester.name_display ||
+                (activeTerm.active_semester.name === "SEM1" ? "Semester 1" :
+                 activeTerm.active_semester.name === "SEM2" ? "Semester 2" :
+                 activeTerm.active_semester.name === "SEM3" ? "Semester 3" : "");
+            if (semDisplay && SEMESTERS.includes(semDisplay)) {
+                setActiveSemester(semDisplay);
+            }
+        }
+    }, [activeTerm]);
 
     useEffect(() => {
         if (studentDetail) {
             setName(prev => prev || `${studentDetail.first_name || ""} ${studentDetail.last_name || ""}`.trim());
             setLrn(prev => prev || studentDetail.school_id || "");
-            setSection(prev => prev || studentDetail.section_name || "");
-            if (studentDetail.age != null) {
-                setAge(prev => (prev !== "" ? prev : Number(studentDetail.age)));
+            if (studentDetail.grade_level) {
+                setGrade(prev => prev || formatGradeLevel(studentDetail.grade_level));
             }
-            if (studentDetail.sex) {
-                setSex(prev => prev || studentDetail.sex!);
+            if (studentDetail.section_name) {
+                setSection(prev => prev || formatSectionName(studentDetail.section_name));
+            }
+            if (studentDetail.age != null) {
+                setAge(Number(studentDetail.age));
+                setHasBackendAge(true);
+            }
+            const s = studentDetail.sex || studentDetail.gender;
+            if (s) {
+                const formatted = s.toUpperCase() === "MALE" ? "Male" : s.toUpperCase() === "FEMALE" ? "Female" : s;
+                setSex(prev => prev || formatted);
+                setHasBackendSex(true);
             }
         }
     }, [studentDetail]);
@@ -119,9 +162,18 @@ export default function InputReportCardData() {
         setDownloading(true);
         try {
             const token = localStorage.getItem("access");
+            const resolvedSY = schoolYear || activeTerm?.school_year?.name || "2026-2027";
             await generateSF9PDF({
                 studentId: studentId!,
-                studentInfo: { name, age, section, sex, lrn, schoolYear },
+                studentInfo: {
+                    name,
+                    age,
+                    sex,
+                    grade: formatGradeLevel(grade),
+                    section: formatSectionName(section),
+                    lrn,
+                    schoolYear: resolvedSY,
+                },
                 attendance,
                 observedValues,
                 token,
@@ -138,7 +190,21 @@ export default function InputReportCardData() {
 
     const saveToBackend = async () => {
         setLoading(true);
-        const payload = { studentId, studentInfo: { name, age, section, sex, lrn, schoolYear }, attendance, observedValues };
+        const resolvedSY = schoolYear || activeTerm?.school_year?.name || "2026-2027";
+        const payload = {
+            studentId,
+            studentInfo: {
+                name,
+                age,
+                sex,
+                grade: formatGradeLevel(grade),
+                section: formatSectionName(section),
+                lrn,
+                schoolYear: resolvedSY,
+            },
+            attendance,
+            observedValues,
+        };
         setTimeout(() => {
             setLoading(false);
             navigate(`/teacher/advisory-class/report-card/${studentId}/sf9`, { state: payload });
@@ -157,7 +223,7 @@ export default function InputReportCardData() {
                     <div className="bg-white border rounded-xl px-4 py-2 flex items-center gap-3 shadow-sm">
                         <GraduationCap size={16} className="text-indigo-500" />
                         <span className="text-[10px] font-black text-slate-400 uppercase">S.Y.</span>
-                        <input type="text" value={schoolYear} onChange={(e) => setSchoolYear(e.target.value)} className="w-20 text-xs font-bold focus:outline-none" />
+                        <input type="text" value={schoolYear} onChange={(e) => setSchoolYear(e.target.value)} placeholder={activeTerm?.school_year?.name || "2026-2027"} className="w-24 text-xs font-bold focus:outline-none" />
                     </div>
                     <button
                         type="button"
@@ -181,34 +247,85 @@ export default function InputReportCardData() {
             <div className="grid grid-cols-1 lg:grid-cols-1 gap-8">
                 {/* General Profile Section */}
                 <section className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden">
-                    <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
-                        <User size={14} className="text-indigo-500" /> General Profile
-                    </h2>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-6">
+                        <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <User size={14} className="text-indigo-500" /> Student Profile (SF9 Record)
+                        </h2>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200/80">
+                            <ShieldCheck size={12} className="text-emerald-600" /> Official Record (Read Only)
+                        </span>
+                    </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-5 relative z-10">
-                        <div className="md:col-span-7 space-y-1">
+                        {/* Full Name */}
+                        <div className="md:col-span-6 space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">Full Name</label>
-                            <input className="w-full bg-slate-50 border-none p-4 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500" value={name} onChange={e => setName(e.target.value)} />
+                            <div className="w-full bg-slate-100/70 border border-slate-200/70 p-3.5 rounded-2xl text-sm font-bold text-slate-800 select-none">
+                                {name || "—"}
+                            </div>
                         </div>
-                        <div className="md:col-span-5 space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">LRN / ID</label>
-                            <input className="w-full bg-slate-50 border-none p-4 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500" value={lrn} onChange={e => setLrn(e.target.value)} />
+
+                        {/* LRN / ID */}
+                        <div className="md:col-span-6 space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">LRN / Student ID</label>
+                            <div className="w-full bg-slate-100/70 border border-slate-200/70 p-3.5 rounded-2xl text-sm font-mono font-bold text-slate-800 select-none">
+                                {lrn || "—"}
+                            </div>
                         </div>
-                        <div className="md:col-span-2 space-y-1">
+
+                        {/* Grade Level */}
+                        <div className="md:col-span-3 space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">Grade Level</label>
+                            <div className="w-full bg-slate-100/70 border border-slate-200/70 p-3.5 rounded-2xl text-sm font-bold text-slate-800 select-none">
+                                {grade ? `Grade ${grade}` : (grade === "" ? "—" : grade)}
+                            </div>
+                        </div>
+
+                        {/* Section */}
+                        <div className="md:col-span-3 space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">Section</label>
+                            <div className="w-full bg-slate-100/70 border border-slate-200/70 p-3.5 rounded-2xl text-sm font-bold text-slate-800 select-none">
+                                {section || "—"}
+                            </div>
+                        </div>
+
+                        {/* Age */}
+                        <div className="md:col-span-3 space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">Age</label>
-                            <input type="number" className="w-full bg-slate-50 border-none p-4 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500" value={age} onChange={e => setAge(e.target.value === "" ? "" : Number(e.target.value))} />
+                            {hasBackendAge && age !== "" ? (
+                                <div className="w-full bg-slate-100/70 border border-slate-200/70 p-3.5 rounded-2xl text-sm font-bold text-slate-800 select-none">
+                                    {age} yrs old
+                                </div>
+                            ) : (
+                                <input
+                                    type="number"
+                                    min="1"
+                                    placeholder="Enter age"
+                                    className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                                    value={age}
+                                    onChange={e => setAge(e.target.value === "" ? "" : Number(e.target.value))}
+                                />
+                            )}
                         </div>
-                        <div className="md:col-span-3 space-y-1">
+
+                        {/* Sex */}
+                        <div className="md:col-span-3 space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">Sex</label>
-                            <select className="w-full bg-slate-50 border-none p-4 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 appearance-none" value={sex} onChange={e => setSex(e.target.value)}>
-                                <option value="">Select</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                            </select>
-                        </div>
-                        <div className="md:col-span-7 space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-wider">Grade & Section</label>
-                            <input className="w-full bg-slate-50 border-none p-4 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500" value={section} onChange={e => setSection(e.target.value)} />
+                            {hasBackendSex && sex ? (
+                                <div className="w-full bg-slate-100/70 border border-slate-200/70 p-3.5 rounded-2xl text-sm font-bold text-slate-800 select-none">
+                                    {sex}
+                                </div>
+                            ) : (
+                                <select
+                                    className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                                    value={sex}
+                                    onChange={e => setSex(e.target.value)}
+                                >
+                                    <option value="">Select</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                </select>
+                            )}
                         </div>
                     </div>
                 </section>
