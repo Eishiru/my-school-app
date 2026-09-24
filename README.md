@@ -1,6 +1,6 @@
 # ClaroEd — local development and deployment
 
-This is a cleaned source workspace based on your latest my-school-app.zip. Open this folder in VS Code. Keep frontend and backend together in one repository; deploy them as two Vercel projects so Django never intercepts React's CSS/JS requests.
+This is a cleaned source workspace based on your latest my-school-app.zip. Open this folder in VS Code. Keep frontend and backend together in one repository; deploy them together as ONE Vercel project. React serves pages and assets; Django handles /api on the same domain.
 
 ## Folder guide
 
@@ -9,7 +9,8 @@ This is a cleaned source workspace based on your latest my-school-app.zip. Open 
 | frontend/src | React pages, components, hooks, and API clients |
 | frontend/src/api/config.ts | Single API URL configuration |
 | frontend/vite.config.ts | Local proxy and frontend build settings |
-| frontend/vercel.json | React deployment and page refresh routing |
+| vercel.json | Single-project React build, Django function and routing |
+| api/index.py | Vercel entry point for Django |
 | backend/LMS | Django models, views, serializers, migrations |
 | backend/backend/settings.py | Environment-based Django settings |
 | backend/requirements.txt | UTF-8 Python dependency pins |
@@ -60,9 +61,9 @@ Run makemigrations only after intended model changes, review the generated migra
 
 ## API settings
 
-Local frontend/.env uses VITE_API_BASE_URL=/api. On the FRONTEND Vercel project, set VITE_API_BASE_URL=https://YOUR-BACKEND.vercel.app/api. The value may include /api or just the origin; config.ts normalizes it. Login and direct quiz/group requests now use this same setting.
+Use VITE_API_BASE_URL=/api locally and on Vercel (or omit it to use the default). Remove any old external backend URL from Vercel environment variables. Login and quiz/group requests use the same origin. The local Vite proxy and production Vercel routes both forward /api to Django.
 
-Vite embeds this value during build. Redeploy the frontend after changing it. Never put database passwords, OpenAI keys or S3 credentials in variables starting with VITE_.
+Vite embeds this value during build. Redeploy the project after changing it. Never put database passwords, OpenAI keys or S3 credentials in variables starting with VITE_.
 
 ## Existing data and credentials
 

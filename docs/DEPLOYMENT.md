@@ -1,30 +1,39 @@
-# Vercel deployment
+# One Vercel project: React + Django
 
-Use ONE Git repository and TWO Vercel projects. Do not copy the old root vercel.json or manually copy frontend/dist into Django. Commit the source and lockfile; Vercel builds the frontend itself.
+Use one repository, one Vercel project and one public domain. Upload the CONTENTS of this folder to the repository root, replacing the old configuration. Keep frontend/ and backend/ as subfolders. Do not deploy either folder separately.
 
-## 1. Backend project
+## 1. Project settings
 
-Import the repository into Vercel with Root Directory = backend. Use Django framework detection. Leave build/output defaults unless Vercel asks for an override; do not set the backend output directory to frontend/dist. backend/manage.py and backend/backend/wsgi.py are the Django entry points. The .python-version file pins Python 3.12.
+| Setting | Value |
+| --- | --- |
+| Root Directory | Repository root (leave blank; NOT frontend or backend) |
+| Framework Preset | Other |
+| Node.js | 22.x |
+| Install / Build / Output overrides | Disable old dashboard overrides; root vercel.json defines both builders |
+| VITE_API_BASE_URL | /api, or leave unset |
 
-Set the following environment variables for the deployment environment you will use (Production and/or Preview):
+The root vercel.json uses explicit builders because this project contains both a static frontend and a Python application. A notice that dashboard build settings are ignored because builds is present is expected. The static builder runs the root vercel-build script, installs frontend dependencies with npm ci, and publishes frontend/dist. The Python builder packages api/index.py and backend/ with dependencies from the root UTF-8 requirements.txt. Python is pinned to 3.12 at the root.
+
+Do not retain the previous frontend-only vercel.json, old catch-all Django rewrite, or external VITE_API_BASE_URL. Select the Git branch containing these changes and redeploy.
+
+Set these environment variables on this single project for Production and any Preview environments you use:
 
 | Variable | Value |
 | --- | --- |
 | DJANGO_DEBUG | false |
-| DJANGO_SECRET_KEY | New random secret; generate with `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
-| DATABASE_URL | PostgreSQL connection URL from Supabase; use a supported pooler connection and URL-encode special password characters |
+| DJANGO_SECRET_KEY | New secret, generated with python -c "import secrets; print(secrets.token_urlsafe(64))" |
+| DATABASE_URL | Supabase PostgreSQL connection URL; URL-encode password special characters |
 | DATABASE_SSL_REQUIRED | true |
-| DJANGO_ALLOWED_HOSTS | Backend's stable hostname only, e.g. school-api.vercel.app; comma-separated for multiple hosts |
-| DJANGO_CORS_ALLOWED_ORIGINS | Frontend's exact HTTPS origin, e.g. https://school-ui.vercel.app |
-| DJANGO_CSRF_TRUSTED_ORIGINS | Frontend's exact HTTPS origin |
-| OPENAI_API_KEY | Your backend-only key if you use AI features |
-| OPENAI_MODEL | Your desired supported model; existing model default is preserved |
+| DJANGO_ALLOWED_HOSTS | Your stable hostname, e.g. school.vercel.app; comma-separated for additional hosts |
+| DJANGO_CSRF_TRUSTED_ORIGINS | Your HTTPS origin, e.g. https://school.vercel.app |
+| OPENAI_API_KEY | Backend-only key if you use AI features |
+| OPENAI_MODEL | Your supported model, if overriding the existing default |
 
-The current deployment hostname from VERCEL_URL is also allowed. Add your stable custom/production hostname explicitly. For preview testing, add the exact preview frontend origin to CORS/CSRF settings. Do not use '*' for authenticated school data.
+VERCEL_URL automatically allows the current deployment hostname. Same-origin API requests need no cross-origin CORS entry. Never put secrets into VITE_ variables. Local .env files are excluded from deployment.
 
 ## 2. Persistent uploads (required for the Vercel backend)
 
-Create a private Supabase Storage bucket and obtain S3 access credentials in Supabase Storage settings. Set on the BACKEND project:
+Create a private Supabase Storage bucket and obtain S3 access credentials in Supabase Storage settings. Set on the SAME Vercel project:
 
 | Variable | Value |
 | --- | --- |
@@ -49,41 +58,37 @@ python scripts/backend.py migrate
 
 Back up existing data first. Create the first admin with createsuperuser only if needed. Migrations are NOT run at every build or server startup. Restore your local database environment afterwards.
 
-## 4. Frontend project
+## 4. Request routing
 
-Import the same repository as another Vercel project:
-
-| Setting | Value |
+| Request | Destination |
 | --- | --- |
-| Root Directory | frontend |
-| Framework | Vite |
-| Install Command | npm ci |
-| Build Command | npm run build |
-| Output Directory | dist |
-| Node.js | 22.x |
-| VITE_API_BASE_URL | https://YOUR-BACKEND.vercel.app/api |
+| /api/... | Django WSGI function, with original request path |
+| /media/... | Django; local files only work locally, production uploads use signed storage URLs |
+| Existing CSS, JS, images | Built React static files |
+| Missing /assets/... or file URLs | 404 instead of the React HTML page |
+| React page routes | index.html for client-side routing |
 
-Set the variable before building. frontend/vercel.json sends client-side page routes to index.html and leaves assets/API paths out of that fallback. The frontend's /api path is only proxied in LOCAL Vite development; deployed frontend API calls use the full backend URL above.
+Django's API is consumed by React; this configuration does not publish the optional Django browsable API stylesheet bundle. It does not affect the React interface.
 
-Update the backend CORS/CSRF origins with the frontend's final URL, then redeploy the backend. Environment changes only affect new deployments. Confirm your configured Git branch matches the branch containing this code.
+## 5. Local development
 
-## 5. Verify
+Follow the root README. Run Django with python scripts/backend.py runserver and React with npm run dev in separate terminals. Open http://localhost:5173; Vite proxies /api and /media to Django. Two local processes provide hot reload while production uses one Vercel project. No source URL edits are needed between environments.
 
-- Backend /api/health/ returns {"status":"ok"}. This checks process availability, not database connectivity.
-- Frontend CSS and JS requests return 200 with correct content types.
-- Login Network requests go to your backend HTTPS domain, never 127.0.0.1.
-- Login and a subject-list request work (these exercise the database).
+## 6. Verify after deployment
+
+- /api/health/ returns {"status":"ok"}; this checks startup, not database connectivity.
+- CSS and JS requests return 200 with appropriate content types.
+- Login requests use https://YOUR-SITE.vercel.app/api/... on the same domain.
+- Login and subject lists load, exercising the database.
 - Refresh a nested React page and confirm it loads.
-- Upload/download a test attachment and check the private bucket.
-- Check browser Console and Vercel runtime logs for errors.
+- Upload/download a test attachment through private storage.
+- Check Vercel runtime logs for missing environment variables or other errors.
 
-A 401 from an authenticated endpoint without a token is expected. A CORS error requires matching the exact FRONTEND origin in BACKEND CORS settings. A settings error about missing DATABASE_URL, secret or bucket means backend environment variables are incomplete.
+An unauthenticated API request may return 401. Use runtime logs to diagnose missing database, secret or storage configuration. Database migrations are never run automatically at build time.
 
-## Official references
+## References
 
-- https://vercel.com/templates/backend/django-hello-world
+- https://vercel.com/docs/project-configuration/vercel-json
 - https://vercel.com/docs/functions/runtimes/python
-- https://vite.dev/guide/env-and-mode
 - https://vite.dev/config/server-options
 - https://supabase.com/docs/guides/storage/s3/authentication
-- https://django-storages.readthedocs.io/en/latest/backends/amazon-S3.html
