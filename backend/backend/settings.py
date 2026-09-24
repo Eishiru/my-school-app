@@ -13,22 +13,38 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-rpx83#76+&c8kh8_s6g87wtqn8fq$4ohat5&9k_tdhrqebret^'
+from django.core.exceptions import ImproperlyConfigured
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+def env_list(name, default=''):
+    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
 
-ALLOWED_HOSTS = []
+DEBUG = os.getenv('DJANGO_DEBUG', 'false').lower() == 'true'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', '')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'local-development-only-do-not-use-in-production'
+    else:
+        raise ImproperlyConfigured('Set DJANGO_SECRET_KEY in the backend environment.')
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1' if DEBUG else '')
+if os.getenv('VERCEL_URL'):
+    ALLOWED_HOSTS.append(os.environ['VERCEL_URL'])
+CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
+if os.getenv('VERCEL'):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -49,6 +65,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -90,9 +107,8 @@ SIMPLE_JWT = {
     'JTI_CLAIM': 'jti',
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vite default port
-]
+CORS_ALLOWED_ORIGINS = env_list('DJANGO_CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173' if DEBUG else '')
 
 ROOT_URLCONF = 'backend.urls'
 
@@ -118,18 +134,19 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "postgres",
-        "USER": "postgres.mpqrhkjwusfbysjxazqn",
-        "PASSWORD": "zlPIKu0J0xtkcrjA",
-        "HOST": "aws-1-ap-southeast-1.pooler.supabase.com",
-        "PORT": "6543",
-        "OPTIONS": {"sslmode": "require"},
-        "CONN_MAX_AGE": 0,
-    }
-}
+import dj_database_url
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+if DATABASE_URL:
+    DATABASES = {'default': dj_database_url.parse(DATABASE_URL, conn_max_age=0,
+        ssl_require=os.getenv('DATABASE_SSL_REQUIRED', 'true').lower() == 'true')}
+    DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
+    # Supabase transaction pooler compatibility with psycopg 3.
+    if DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
+        DATABASES['default'].setdefault('OPTIONS', {})['prepare_threshold'] = None
+elif DEBUG:
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
+else:
+    raise ImproperlyConfigured('Set DATABASE_URL for deployment. SQLite is local-development only.')
 
 
 # Password validation
@@ -166,16 +183,12 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / "staticfiles"
-
-STATICFILES_DIRS = [
-    BASE_DIR / "dist",   # ← must EXIST
-]
-
-TEMPLATES[0]["DIRS"] = [
-    BASE_DIR / "dist",
-]
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -185,10 +198,27 @@ AUTH_USER_MODEL = 'LMS.User'
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
-OPENAI_MODEL = 'gpt-3.5-turbo'
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
+
+# Optional S3-compatible storage, including Supabase Storage. Keep the bucket private.
+if os.getenv('AWS_STORAGE_BUCKET_NAME'):
+    AWS_STORAGE_BUCKET_NAME = os.environ['AWS_STORAGE_BUCKET_NAME']
+    AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
+    AWS_SECRET_ACCESS_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
+    AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL')
+    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'ap-southeast-1')
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_ADDRESSING_STYLE = 'path'
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = 3600
+    AWS_S3_FILE_OVERWRITE = False
+    STORAGES['default'] = {'BACKEND': 'storages.backends.s3.S3Storage'}
+elif os.getenv('VERCEL'):
+    raise ImproperlyConfigured('Configure S3-compatible media storage on Vercel; local uploads are not persistent.')

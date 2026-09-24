@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../../../api/config";
 // SubjectQuizAnalytics.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -26,7 +27,7 @@ export default function SubjectQuizAnalytics() {
   const subjectId = Number(id || 0);
 
   const token = localStorage.getItem("access");
-  const base = "http://127.0.0.1:8000/api";
+  const base = API_BASE_URL;
 
   const [rows, setRows] = useState<RecentQuizGrade[]>([]);
   const [loading, setLoading] = useState(true);

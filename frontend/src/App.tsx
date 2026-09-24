@@ -18,7 +18,8 @@ import  TeacherDashboard  from './pages/teacher/dashboard/TeacherDashboard.tsx';
 import SubjectQuizAnalytics from './pages/teacher/subjects/SubjectQuizAnalytics.tsx';
 
 // admin imports
-import AdminDashboard from './pages/admin/dasboard/AdminDashboard.tsx';
+import AdminDashboard from './pages/admin/dashboard/AdminDashboard.tsx';
+import AcademicSetupPage from './pages/admin/academic/AcademicSetupPage.tsx';
 import { FacultyList } from './pages/admin/faculty/departmentId.tsx';
 import { StudentClassList } from './pages/admin/students/Student_classlist.tsx';
 // import SectionsPage from './pages/admin/section/SectionPage.tsx';
@@ -27,7 +28,6 @@ import { StudentAccountsPage} from './pages/admin/students/StudentsPage.tsx';
 import GradeLogs from './pages/admin/gradelogs/GradeLogs.tsx';
 import AccountListPage from './pages/admin/accounts/Account-list.tsx';
 import CreateSectionPage from './pages/admin/students/create-subject.tsx';
-import QuarterlyGradesPage from './pages/teacher/gradebook/QuarterlyGradesPage.tsx';
 import ExportReportCardPDF from './pages/teacher/advisoryClass/ExportReportCard.tsx';
 
 // import SubjectPage from './pages/teacher/subjects/SubjectPage.tsx';
@@ -49,8 +49,8 @@ import QuizGradingPage from './pages/teacher/quiz/QuizGradingPage.tsx';
 import StudentQuizList from './pages/student/quiz/StudentQuizList.tsx';
 import TakeQuiz from './pages/student/quiz/TakeQuiz.tsx';
 import QuizResult from './pages/student/quiz/QuizResult.tsx';
-import StudentGradeForecast from './pages/student/gradeForecast/StudentGradeForecast.tsx';
-import StudentQuarterlyGrades from './pages/student/grades/StudentQuarterlyGrades.tsx';
+import ReviewQuiz from './pages/student/quiz/ReviewQuiz.tsx';
+import StudentSemesterGrades from './pages/student/grades/StudentSemesterGrades.tsx';
 import SubjectLayout from './pages/teacher/subjects/SubjectLayout.tsx';
 import SubjectClassListTab from './pages/teacher/subjects/SubjectClassListTab.tsx';
 import SubjectGradesTab from './pages/teacher/subjects/SubjectGradesTab.tsx';
@@ -59,10 +59,10 @@ import SubjectFilesTab from './pages/teacher/subjects/SubjectFilesTab.tsx';
 import TeacherSubmissionsPage from './pages/teacher/submissions/TeacherSubmissionsPage.tsx';
 import TeacherSubjectSubmissionsPage from './pages/teacher/submissions/TeacherSubjectSubmissionPage.tsx';
 
-import StudentFilesTab from './pages/student/subjects/StudentFilesTab.tsx';
-import TeacherQuarterlyGrades from './pages/teacher/gradebook/SubjectQuarterlyGrades.tsx';
+import SubjectGradeDetailPage from './pages/teacher/gradebook/SubjectSemesterGrades.tsx';
 
 import InputReportCardData from './pages/teacher/advisoryClass/InputReportCardData.tsx';
+import SemesterGradesPage from './pages/teacher/gradebook/SemesterGradesPage.tsx';
 
 
 
@@ -91,12 +91,14 @@ function App() {
               <Route path="/student/dashboard" element={<StudentDashboard />} />
               <Route path="/student/subject" element={<SubjectsPage />} />
               <Route path="/student/subject-offering/:id" element={<StudentSubjectpage />} />
-              <Route path="/student/subject-offering/:id/files" element={<StudentFilesTab />} />
-              <Route path="/student/grades/quarterly" element={<StudentQuarterlyGrades />} />
+             
+              <Route path="/student/report-card" element={<StudentSemesterGrades />} />
+              <Route path="/student/grades/quarterly" element={<Navigate to="/student/report-card" replace />} />
+              <Route path="/student/grades/semester" element={<Navigate to="/student/report-card" replace />} />
               <Route path="/student/activities" element={<StudentQuizList />} />
               <Route path="/student/activities/:id/take" element={<TakeQuiz />} />
+              <Route path="/student/activities/:id/review" element={<ReviewQuiz />} />
               <Route path="/student/activities/result" element={<QuizResult />} />
-              <Route path="/student/grade-forecast" element={<StudentGradeForecast />} />
 
               {/* You can add more student pages here like /student/grades */}
             </Route>
@@ -128,8 +130,8 @@ function App() {
               <Route path="/teacher/submissions" element={<TeacherSubmissionsPage />} />
               <Route path="/teacher/submissions/:subjectOfferingId" element={<TeacherSubjectSubmissionsPage />} />
 
-              <Route path="/teacher/grades/quarterly" element={<QuarterlyGradesPage />} />
-              <Route path='/teacher/grades/quarterly/:id' element={<TeacherQuarterlyGrades />} />
+              <Route path="/teacher/grades/semester" element={<SemesterGradesPage />} />
+              <Route path='/teacher/grades/semester/:id' element={<SubjectGradeDetailPage />} />
               <Route path="/teacher/advisory-class" element={<AdvisoryClass />} />
               <Route path="/teacher/advisory-class/report-card/:studentId" element={<InputReportCardData />} />
               <Route path="/teacher/advisory-class/report-card/:studentId/sf9" element={<ExportReportCardPDF />} />
@@ -141,13 +143,12 @@ function App() {
               <Route path="/teacher/activities/:id" element={<ManageQuiz />} />
               <Route path="/teacher/activities/:id/item-analysis" element={<QuizItemAnalysis />} />
               <Route path="/teacher/activities/:id/grading" element={<QuizGradingPage />} />
-              
-
             </Route>
 
             {/* Admin Domain */}
             <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
+              <Route path="/admin/academic-setup" element={<AcademicSetupPage />} />
               <Route path="/admin/accounts" element={<AccountListPage />} />
               <Route path="/admin/accounts/create/teacher" element={<CreateTeacherAccountPage />} />
               <Route path="/admin/accounts/create/student" element={<CreateStudentAccountPage />} />

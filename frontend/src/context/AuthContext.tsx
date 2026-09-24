@@ -5,6 +5,8 @@ export type Role = "STUDENT" | "TEACHER" | "ADMIN";
 export interface User {
   id: string;
   email: string;
+  first_name: string;
+  last_name: string;
   role: Role;
   token: string;
 }

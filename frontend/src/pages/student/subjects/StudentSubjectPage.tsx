@@ -1,6 +1,4 @@
-'use client';
-
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -9,44 +7,30 @@ import {
   ArrowUpDown,
   PlayCircle,
   RefreshCw,
-  GraduationCap,
   Layers,
   FolderOpen,
   CalendarClock,
+  BarChart2,
+  Award,
+  CheckCircle2,
+  Eye,
+  X,
+  Clock,
 } from 'lucide-react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 
-type SubjectOfferingDetail = {
-  id: number;
-  subject_name: string;
-  teacher_name?: string;
-  average?: number;
-  final_grade?: number;
-};
+// STUDENT HOOKS
+import { useStudentSubject } from '../../../hooks/useStudentSubject';
+import { useStudentSubjectQuizzes } from '../../../hooks/useStudentSubjectQuizzes';
+import { useStudentSubjectFiles } from '../../../hooks/useStudentSubjectFiles';
+import {
+  useStudentSubjectGrades,
+  useStudentQuizAttempts,
+} from '../../../hooks/useStudentSemesterGrades';
+
+import type { StudentQuiz } from '../../../types/studentTypes';
 
 type QuizStatus = 'DRAFT' | 'SCHEDULED' | 'OPEN' | 'CLOSED';
-
-type Quiz = {
-  id: number;
-  title: string;
-  status?: QuizStatus;
-  open_time?: string | null;
-  close_time?: string | null;
-  time_limit?: number | null;
-
-  is_open?: boolean;
-  is_upcoming?: boolean;
-  is_closed?: boolean;
-};
-
-type OfferingFile = {
-  id: number;
-  title: string;
-  file_url: string;
-  file_size: number;
-  content_type: string;
-  created_at: string;
-};
 
 function formatDate(iso?: string | null) {
   if (!iso) return '—';
@@ -59,26 +43,31 @@ function formatDateTime(iso?: string | null) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString();
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-function getQuizStatus(q: Quiz): QuizStatus {
+function getQuizStatus(q: StudentQuiz): QuizStatus {
   if (q.is_open) return 'OPEN';
   if (q.is_upcoming) return 'SCHEDULED';
   if (q.is_closed) return 'CLOSED';
-  return q.status ?? 'SCHEDULED';
+  return 'SCHEDULED';
 }
 
 function statusMeta(s: QuizStatus) {
   if (s === 'OPEN')
     return {
-      chip: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+      chip: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
       dot: 'bg-emerald-500',
       label: 'OPEN',
     };
   if (s === 'SCHEDULED')
     return {
-      chip: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+      chip: 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
       dot: 'bg-amber-500',
       label: 'SCHEDULED',
     };
@@ -107,85 +96,18 @@ function formatBytes(bytes: number) {
   return `${num.toFixed(num >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-
-
-function SkeletonLine({ w = 'w-full' }: { w?: string }) {
-  return <div className={`h-3 ${w} rounded-full bg-slate-200/80 animate-pulse`} />;
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: React.ReactNode;
-  hint: string;
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</div>
-            <div className="mt-3 text-4xl font-black tracking-tight text-slate-900">{value}</div>
-            <div className="mt-2 text-xs text-slate-500">{hint}</div>
-          </div>
-          <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700">
-            {icon}
-          </div>
-        </div>
-      </div>
-      <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-slate-100" />
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  icon,
-  label,
-  onClick,
-  count,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  count?: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        'group relative inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition',
-        active
-          ? 'bg-slate-900 text-white shadow-sm'
-          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50',
-      ].join(' ')}
-    >
-      <span className={active ? 'text-white' : 'text-slate-600'}>{icon}</span>
-      <span className="uppercase tracking-wider text-[12px]">{label}</span>
-      {typeof count === 'number' ? (
-        <span
-          className={[
-            'ml-1 rounded-full px-2 py-0.5 text-[11px] font-black',
-            active ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700',
-          ].join(' ')}
-        >
-          {count}
-        </span>
-      ) : null}
-      <span
-        className={[
-          'absolute inset-0 rounded-2xl ring-2 ring-transparent transition',
-          active ? 'ring-white/10' : 'group-hover:ring-slate-200',
-        ].join(' ')}
-      />
-    </button>
-  );
+function isPreviewable(contentType: string, url: string) {
+  const lower = (url || '').toLowerCase();
+  if ((contentType || '').startsWith('image/')) {
+    return 'image' as const;
+  }
+  if (contentType === 'application/pdf' || lower.endsWith('.pdf')) {
+    return 'pdf' as const;
+  }
+  if (lower.match(/\.(png|jpg|jpeg|webp)$/)) {
+    return 'image' as const;
+  }
+  return null;
 }
 
 export default function StudentSubjectpage() {
@@ -193,99 +115,100 @@ export default function StudentSubjectpage() {
   const navigate = useNavigate();
 
   const offeringId = Number(id || 0);
-  const [activeTab, setActiveTab] = useState<'activities' | 'files'>('activities');
+  const [activeTab, setActiveTab] = useState<'activities' | 'files' | 'grades'>('activities');
 
-  const [offering, setOffering] = useState<SubjectOfferingDetail | null>(null);
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [files, setFiles] = useState<OfferingFile[]>([]);
+  const [preview, setPreview] = useState<{
+    kind: 'pdf' | 'image';
+    url: string;
+    title: string;
+  } | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const {
+    data: offering,
+    isLoading: subjectLoading,
+    error: subjectError,
+  } = useStudentSubject(offeringId);
+
+  const {
+    data: quizzes = [],
+    isLoading: quizzesLoading,
+    error: quizzesError,
+  } = useStudentSubjectQuizzes(offeringId);
+
+  const {
+    data: files = [],
+    isLoading: filesLoading,
+    error: filesError,
+    refetch: refetchFiles,
+    isFetching: filesFetching,
+  } = useStudentSubjectFiles(offeringId);
+
+  const { data: subjectGrades = [] } = useStudentSubjectGrades(offeringId);
+
+  const { data: quizAttempts = [] } = useStudentQuizAttempts();
+
+  const attemptsByQuizId = useMemo(() => {
+    const map = new Map<number, (typeof quizAttempts)[0]>();
+    for (const att of quizAttempts) {
+      map.set(att.quiz, att);
+    }
+    return map;
+  }, [quizAttempts]);
+
+  // Semester grade breakdown map (1, 2, 3)
+  const semesterBreakdown = useMemo(() => {
+    const map: Record<number, any> = {};
+    for (const g of subjectGrades) {
+      let semNum: number | null = null;
+      const semStr = String((g as any).semester?.name ?? (g as any).semester ?? '');
+      if (semStr.includes('1')) semNum = 1;
+      else if (semStr.includes('2')) semNum = 2;
+      else if (semStr.includes('3')) semNum = 3;
+      else if (g.quarter) semNum = g.quarter;
+
+      if (semNum && (!map[semNum] || g.final_grade !== null)) {
+        map[semNum] = g;
+      }
+    }
+    return map;
+  }, [subjectGrades]);
+
+  const computedFinalGrade = useMemo(() => {
+    const sem1 =
+      semesterBreakdown[1]?.final_grade ??
+      offering?.semesters?.['SEMESTER_1'] ??
+      offering?.semesters?.['SEM1'];
+    const sem2 =
+      semesterBreakdown[2]?.final_grade ??
+      offering?.semesters?.['SEMESTER_2'] ??
+      offering?.semesters?.['SEM2'];
+    const sem3 =
+      semesterBreakdown[3]?.final_grade ??
+      offering?.semesters?.['SEMESTER_3'] ??
+      offering?.semesters?.['SEM3'];
+
+    const validSems = [sem1, sem2, sem3].filter(
+      (v): v is number => typeof v === 'number' && !Number.isNaN(v)
+    );
+    if (validSems.length === 0) {
+      return typeof offering?.final_grade === 'number' ? offering.final_grade : null;
+    }
+    return Math.round((validSems.reduce((a, b) => a + b, 0) / validSems.length) * 100) / 100;
+  }, [semesterBreakdown, offering]);
 
   // files UI state
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'name'>('newest');
-  const [refreshingFiles, setRefreshingFiles] = useState(false);
-
-  const token = localStorage.getItem('access');
-  const base = 'http://127.0.0.1:8000/api';
-
-  useEffect(() => {
-    const run = async () => {
-      if (!token) {
-        setErrorMsg('Not authenticated. Please log in again.');
-        setLoading(false);
-        return;
-      }
-      if (!offeringId) {
-        setErrorMsg('Invalid subject offering id.');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setErrorMsg(null);
-
-        // 1) subject offering detail
-        const offeringRes = await fetch(`${base}/student/subject-offerings/${offeringId}/`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!offeringRes.ok) {
-          const err = await offeringRes.json().catch(() => ({}));
-          console.error('SubjectOffering load failed:', err);
-          setErrorMsg('Subject offering not found.');
-          setOffering(null);
-          setQuizzes([]);
-          setFiles([]);
-          return;
-        }
-
-        const offeringData = (await offeringRes.json()) as SubjectOfferingDetail;
-        setOffering(offeringData);
-
-        // 2) quizzes + files
-        const [qRes, fRes] = await Promise.all([
-          fetch(`${base}/student/subject-offerings/${offeringId}/quizzes/`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => null),
-          fetch(`${base}/student/subject-offerings/${offeringId}/files/`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => null),
-        ]);
-
-        if (qRes && qRes.ok) {
-          const data = (await qRes.json()) as Quiz[];
-          setQuizzes(Array.isArray(data) ? data : []);
-        } else {
-          setQuizzes([]);
-        }
-
-        if (fRes && fRes.ok) {
-          const data = (await fRes.json()) as OfferingFile[];
-          setFiles(Array.isArray(data) ? data : []);
-        } else {
-          setFiles([]);
-        }
-      } catch (e) {
-        console.error(e);
-        setErrorMsg('Network error while loading subject offering.');
-        setOffering(null);
-        setQuizzes([]);
-        setFiles([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    run();
-  }, [offeringId, token]);
 
   const stats = useMemo(() => {
-    const grade = typeof offering?.final_grade === 'number' ? Math.round(offering.final_grade) : null;
+    const grade =
+      computedFinalGrade !== null
+        ? Math.round(computedFinalGrade)
+        : typeof offering?.final_grade === 'number'
+        ? Math.round(offering.final_grade)
+        : null;
     return { grade, activityCount: quizzes.length, fileCount: files.length };
-  }, [offering, quizzes, files]);
+  }, [computedFinalGrade, offering, quizzes, files]);
 
   // Sort quizzes: OPEN first → SCHEDULED → CLOSED → DRAFT
   const sortedQuizzes = useMemo(() => {
@@ -320,482 +243,623 @@ export default function StudentSubjectpage() {
     return arr;
   }, [files, q, sort]);
 
-  async function refreshFiles() {
-    if (!token) return;
-    try {
-      setRefreshingFiles(true);
-      const res = await fetch(`${base}/student/subject-offerings/${offeringId}/files/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => []);
-      setFiles(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setRefreshingFiles(false);
-    }
-  }
-
-  if (loading) {
+  if (filesLoading || subjectLoading || quizzesLoading) {
     return (
-      <main className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-10">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-28 rounded-2xl bg-white border border-slate-200 shadow-sm" />
-            <div className="flex-1">
-              <div className="h-8 w-64 rounded-2xl bg-slate-200/80 animate-pulse" />
-              <div className="mt-2 h-3 w-40 rounded-full bg-slate-200/80 animate-pulse" />
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              <SkeletonLine w="w-32" />
-              <div className="mt-5">
-                <SkeletonLine w="w-24" />
-              </div>
-              <div className="mt-3">
-                <SkeletonLine w="w-40" />
-              </div>
-            </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              <SkeletonLine w="w-32" />
-              <div className="mt-5">
-                <SkeletonLine w="w-16" />
-              </div>
-              <div className="mt-3">
-                <SkeletonLine w="w-44" />
-              </div>
-            </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-6">
-              <SkeletonLine w="w-32" />
-              <div className="mt-5">
-                <SkeletonLine w="w-16" />
-              </div>
-              <div className="mt-3">
-                <SkeletonLine w="w-44" />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6">
-            <div className="flex items-center gap-2">
-              <div className="h-10 w-32 rounded-2xl bg-slate-200/80 animate-pulse" />
-              <div className="h-10 w-28 rounded-2xl bg-slate-200/80 animate-pulse" />
-            </div>
-            <div className="mt-6 space-y-3">
-              <div className="h-16 rounded-2xl bg-slate-100 animate-pulse" />
-              <div className="h-16 rounded-2xl bg-slate-100 animate-pulse" />
-              <div className="h-16 rounded-2xl bg-slate-100 animate-pulse" />
-            </div>
-          </div>
+      <div className="flex h-72 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-500">Loading subject workspace...</p>
         </div>
-      </main>
+      </div>
     );
   }
 
-  if (errorMsg || !offering) {
+  if (subjectError || quizzesError || filesError || !offering) {
     return (
-      <main className="min-h-[70vh] bg-slate-50">
-        <div className="mx-auto max-w-6xl px-4 md:px-6 py-10">
-          <button
-            onClick={() => navigate('/student/subject')}
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
-
-          <div className="mt-6 rounded-3xl border border-rose-200 bg-white p-6">
-            <div className="text-sm font-black uppercase tracking-widest text-rose-500">Error</div>
-            <div className="mt-2 text-lg font-bold text-slate-900">{errorMsg ?? 'Not found'}</div>
-            <div className="mt-1 text-sm text-slate-500">Try going back and selecting the subject again.</div>
-          </div>
-        </div>
-      </main>
+      <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-6 text-center">
+        <h3 className="text-sm font-semibold text-rose-900">Failed to load subject workspace</h3>
+        <p className="mt-1 text-xs text-rose-600">
+          {subjectError
+            ? 'Unable to load subject.'
+            : quizzesError
+            ? 'Unable to load subject activities.'
+            : filesError
+            ? 'Unable to load subject files.'
+            : 'Subject offering not found.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/student/subject')}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition"
+        >
+          <ArrowLeft size={13} /> Back to Subjects
+        </button>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      {/* Preview modal (files) */}
-      
+    <div className="space-y-6">
+      {/* File Preview Modal */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="flex flex-col w-full max-w-4xl max-h-[90vh] rounded-xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-slate-50/80">
+              <div className="font-semibold text-sm text-slate-900 truncate">
+                {preview.title}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200/60 hover:text-slate-700 transition-colors"
+                aria-label="Close preview"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-      {/* Sticky top bar */}
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/85 backdrop-blur">
-        <div className="mx-auto px-4 md:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Link
-              to="/student/subject"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
+            <div className="flex-1 bg-slate-100 p-2 overflow-auto min-h-[60vh]">
+              {preview.kind === 'image' ? (
+                <div className="flex h-full items-center justify-center p-4">
+                  <img
+                    src={preview.url}
+                    alt={preview.title}
+                    className="max-h-[70vh] max-w-full rounded-lg object-contain shadow-xs"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  title={preview.title}
+                  src={preview.url}
+                  className="w-full h-full min-h-[65vh] rounded-lg border border-slate-200 bg-white"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Header Bar */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Link
+            to="/student/subject"
+            className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
+            title="Back to subjects"
+          >
+            <ArrowLeft size={16} />
+          </Link>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Subject Workspace
+              </span>
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              {offering.subject_name}
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Instructor: <span className="font-semibold text-slate-700">{offering.teacher_name ?? '—'}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab('activities')}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              activeTab === 'activities'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Layers size={14} />
+            <span>Activities</span>
+            <span
+              className={`font-mono text-[10px] px-1.5 py-0.2 rounded-md font-bold ${
+                activeTab === 'activities' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+              }`}
             >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Link>
+              {stats.activityCount}
+            </span>
+          </button>
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <h1 className="truncate text-xl md:text-2xl font-black tracking-tight text-slate-900">
-                  {offering.subject_name}
-                </h1>
-              </div>
-              <div className="mt-0.5 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                {offering.teacher_name ?? '—'}
-              </div>
-            </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('files')}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              activeTab === 'files'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <FolderOpen size={14} />
+            <span>Files</span>
+            <span
+              className={`font-mono text-[10px] px-1.5 py-0.2 rounded-md font-bold ${
+                activeTab === 'files' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {stats.fileCount}
+            </span>
+          </button>
 
-            <div className="ml-auto hidden md:flex items-center gap-2">
-              <TabButton
-                active={activeTab === 'activities'}
-                icon={<Layers size={16} />}
-                label="Activities"
-                count={stats.activityCount}
-                onClick={() => setActiveTab('activities')}
-              />
-              <TabButton
-                active={activeTab === 'files'}
-                icon={<FolderOpen size={16} />}
-                label="Files"
-                count={stats.fileCount}
-                onClick={() => setActiveTab('files')}
-              />
-            </div>
-          </div>
-
-          {/* mobile tabs */}
-          <div className="mt-3 flex md:hidden gap-2">
-            <TabButton
-              active={activeTab === 'activities'}
-              icon={<Layers size={16} />}
-              label="Activities"
-              count={stats.activityCount}
-              onClick={() => setActiveTab('activities')}
-            />
-            <TabButton
-              active={activeTab === 'files'}
-              icon={<FolderOpen size={16} />}
-              label="Files"
-              count={stats.fileCount}
-              onClick={() => setActiveTab('files')}
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('grades')}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              activeTab === 'grades'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Award size={14} />
+            <span>Grades</span>
+          </button>
         </div>
       </div>
 
-      <div className="mx-auto px-4 md:px-6 py-6 md:py-10">
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <StatCard
-            icon={<GraduationCap size={18} />}
-            label="Current Grade"
-            value={
-              <div className="flex items-baseline gap-2">
-                <span>{stats.grade ?? '—'}</span>
-                <span className="text-base font-black text-slate-400">/ 100</span>
-              </div>
-            }
-            hint="Official SF9 entry"
-          />
-          <StatCard
-            icon={<Layers size={18} />}
-            label="Activities"
-            value={<span>{stats.activityCount}</span>}
-            hint="Quizzes / Exams"
-          />
-          <StatCard
-            icon={<FolderOpen size={18} />}
-            label="Files"
-            value={<span>{stats.fileCount}</span>}
-            hint="Handouts / Modules"
-          />
-        </div>
-
-        {/* Content card */}
-        <div className="mt-6 rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="p-6 md:p-8 border-b border-slate-100">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Subject Workspace</div>
-                <div className="mt-2 text-2xl md:text-3xl font-black tracking-tight text-slate-900">
-                  {activeTab === 'activities' ? 'Activities' : 'Files'}
-                </div>
-                <div className="mt-2 text-sm text-slate-600">
-                  {activeTab === 'activities'
-                    ? 'Start open quizzes and check upcoming schedules.'
-                    : 'Browse handouts, modules, and shared materials.'}
-                </div>
-              </div>
-
-              
+      {/* 3 Quick Stat Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Stat 1: Final Grade */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Current Grade</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+              <BarChart2 size={18} />
             </div>
           </div>
+          <div className="mt-3 flex items-baseline gap-1">
+            <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+              {stats.grade ?? '—'}
+            </span>
+            {stats.grade !== null && <span className="text-xs font-semibold text-slate-400">/ 100</span>}
+          </div>
+          <div className="mt-1 text-xs text-slate-400">Official SF9 entry</div>
+        </div>
 
-          <div className="p-6 md:p-8">
-            {/* ACTIVITIES */}
-            {activeTab === 'activities' && (
+        {/* Stat 2: Activities Count */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Activities</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+              <Layers size={18} />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+              {stats.activityCount}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">Quizzes & assessments</div>
+        </div>
+
+        {/* Stat 3: Files Count */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Learning Materials</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+              <FolderOpen size={18} />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+              {stats.fileCount}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">Handouts & modules</div>
+        </div>
+      </div>
+
+      {/* Main Tab Content */}
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+        {/* Tab 1: Activities */}
+        {activeTab === 'activities' && (
+          <div>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div>
-                {sortedQuizzes.length === 0 ? (
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6">
-                    <div className="flex items-start gap-3">
-                      <div className="h-12 w-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-700">
-                        <CalendarClock size={18} />
-                      </div>
-                      <div>
-                        <div className="font-black text-slate-900">No activities yet</div>
-                        <div className="mt-1 text-sm text-slate-600">
-                          Your teacher hasn’t posted quizzes/exams for this subject.
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-3xl border border-slate-200 overflow-hidden">
-                    {/* Desktop table */}
-                    <div className="hidden md:block">
-                      <div className="max-h-[560px] overflow-auto">
-                        <table className="w-full text-left">
-                          <thead className="sticky top-0 z-10 bg-white">
-                            <tr className="border-b border-slate-200">
-                              <th className="py-4 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                Activity
-                              </th>
-                              <th className="py-4 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                Open
-                              </th>
-                              <th className="py-4 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                Close
-                              </th>
-                              <th className="py-4 px-5 text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                Status
-                              </th>
-                              <th className="py-4 px-5 text-right text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                Action
-                              </th>
-                            </tr>
-                          </thead>
+                <h2 className="text-sm font-semibold text-slate-900">Assigned Activities</h2>
+                <p className="text-xs text-slate-500">Quizzes and formal assessments for this subject</p>
+              </div>
+            </div>
 
-                          <tbody className="divide-y divide-slate-100">
-                            {sortedQuizzes.map((qq) => {
-                              const status = getQuizStatus(qq);
-                              const canStart = status === 'OPEN';
-                              const meta = statusMeta(status);
+            {sortedQuizzes.length === 0 ? (
+              <div className="p-12 text-center">
+                <CalendarClock className="mx-auto h-8 w-8 text-slate-300" />
+                <h3 className="mt-2 text-sm font-semibold text-slate-900">No activities posted yet</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Your instructor has not published any quizzes or exams for this class.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <th className="py-3 px-5">Activity</th>
+                      <th className="py-3 px-4">Opens</th>
+                      <th className="py-3 px-4">Closes</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-5 text-right">Action / Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {sortedQuizzes.map((qq) => {
+                      const status = getQuizStatus(qq);
+                      const attempt = attemptsByQuizId.get(qq.id);
+                      const isCompleted =
+                        !!attempt &&
+                        (attempt.status === 'SUBMITTED' ||
+                          attempt.status === 'GRADED' ||
+                          (attempt.score !== null && attempt.score !== undefined));
+                      const canStart = !isCompleted && status === 'OPEN';
+                      const meta = statusMeta(status);
 
-                              return (
-                                <tr key={qq.id} className="hover:bg-slate-50 transition-colors">
-                                  <td className="py-5 px-5">
-                                    <div className="font-black text-slate-900">{qq.title}</div>
-                                    {qq.time_limit ? (
-                                      <div className="mt-1 text-xs text-slate-500">
-                                        Time limit: <span className="font-bold">{qq.time_limit} min</span>
-                                      </div>
-                                    ) : (
-                                      <div className="mt-1 text-xs text-slate-500">No time limit</div>
-                                    )}
-                                  </td>
-                                  <td className="py-5 px-5 text-sm text-slate-600">{formatDateTime(qq.open_time)}</td>
-                                  <td className="py-5 px-5 text-sm text-slate-600">{formatDateTime(qq.close_time)}</td>
-                                  <td className="py-5 px-5">
-                                    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${meta.chip}`}>
-                                      <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-                                      {meta.label}
-                                    </span>
-                                  </td>
-                                  <td className="py-5 px-5 text-right">
-                                    {canStart ? (
-                                      <Link
-                                        to={`/student/activities/`}
-                                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-600 transition"
-                                      >
-                                        <PlayCircle className="h-4 w-4" />
-                                        Start
-                                      </Link>
-                                    ) : (
-                                      <button
-                                        disabled
-                                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-300 cursor-not-allowed"
-                                      >
-                                        <PlayCircle className="h-4 w-4" />
-                                        Start
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Mobile cards */}
-                    <div className="md:hidden p-3 space-y-3">
-                      {sortedQuizzes.map((qq) => {
-                        const status = getQuizStatus(qq);
-                        const canStart = status === 'OPEN';
-                        const meta = statusMeta(status);
-
-                        return (
-                          <div key={qq.id} className="rounded-3xl border border-slate-200 bg-white p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="font-black text-slate-900 truncate">{qq.title}</div>
-                                <div className="mt-1 text-xs text-slate-500">
-                                  Open: {formatDate(qq.open_time)} • Close: {formatDate(qq.close_time)}
-                                </div>
-                                <div className="mt-1 text-xs text-slate-500">
-                                  {qq.time_limit ? `Time limit: ${qq.time_limit} min` : 'No time limit'}
-                                </div>
-                              </div>
-                              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${meta.chip}`}>
-                                <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                      return (
+                        <tr key={qq.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3.5 px-5">
+                            <div className="font-semibold text-slate-900">{qq.title}</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              {qq.time_limit ? `${qq.time_limit} mins` : 'No time limit'} •{' '}
+                              {qq.total_points ?? 0} pts
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
+                            {formatDateTime(qq.open_time)}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
+                            {formatDateTime(qq.close_time)}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {isCompleted ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20">
+                                <CheckCircle2 size={11} /> COMPLETED
+                              </span>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${meta.chip}`}>
+                                <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
                                 {meta.label}
                               </span>
-                            </div>
-
-                            <div className="mt-3">
-                              {canStart ? (
-                                <Link
-                                  to={`/student/activities/${qq.id}/take`}
-                                  className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-600 transition"
-                                >
-                                  <PlayCircle className="h-4 w-4" />
-                                  Start
-                                </Link>
-                              ) : (
-                                <button
-                                  disabled
-                                  className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-300 cursor-not-allowed"
-                                >
-                                  <PlayCircle className="h-4 w-4" />
-                                  Start
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4 text-xs text-slate-500">
-                  Tip: Only <span className="font-black text-slate-900">OPEN</span> activities can be started.
-                </div>
-              </div>
-            )}
-
-            {/* FILES */}
-            {activeTab === 'files' && (
-              <div>
-                {/* controls */}
-                <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input
-                      value={q}
-                      onChange={(e) => setQ(e.target.value)}
-                      placeholder="Search files (module, week 1, ppt)…"
-                      className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="inline-flex items-center gap-2 px-3 py-3 rounded-2xl border border-slate-200 bg-white">
-                      <ArrowUpDown size={18} className="text-slate-500" />
-                      <select
-                        value={sort}
-                        onChange={(e) => setSort(e.target.value as any)}
-                        className="text-sm font-black text-slate-700 outline-none bg-transparent"
-                      >
-                        <option value="newest">Newest</option>
-                        <option value="oldest">Oldest</option>
-                        <option value="name">Name</option>
-                      </select>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={refreshFiles}
-                      disabled={refreshingFiles}
-                      className={[
-                        'inline-flex items-center gap-2 px-4 py-3 rounded-2xl border text-sm font-black transition',
-                        refreshingFiles
-                          ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-                      ].join(' ')}
-                      title="Refresh"
-                    >
-                      <RefreshCw size={16} className={refreshingFiles ? 'animate-spin' : ''} />
-                      Refresh
-                    </button>
-                  </div>
-                </div>
-
-                {/* list */}
-                {visibleFiles.length === 0 ? (
-                  <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-6">
-                    <div className="flex items-start gap-3">
-                      <div className="h-12 w-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-700">
-                        <FileText size={18} />
-                      </div>
-                      <div>
-                        <div className="font-black text-slate-900">No files found</div>
-                        <div className="mt-1 text-sm text-slate-600">Try a different keyword or clear the search.</div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-6 rounded-3xl border border-slate-200 overflow-hidden">
-                    <div className="max-h-[560px] overflow-auto divide-y divide-slate-100">
-                      {visibleFiles.map((f) => {
-                        return (
-                          <div
-                            key={f.id}
-                            className="p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-slate-50 transition"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="h-11 w-11 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                                <FileText size={18} />
+                            )}
+                          </td>
+                          <td className="py-3.5 px-5 text-right">
+                            {isCompleted ? (
+                              <div className="inline-flex flex-col items-end">
+                                <span className="font-mono text-xs font-bold text-slate-900">
+                                  {attempt?.score ?? 0} / {attempt?.total ?? qq.total_points ?? 0}
+                                </span>
+                                <span className="font-mono text-[10px] font-semibold text-emerald-600">
+                                  {Math.round(attempt?.percentage ?? 0)}%
+                                </span>
                               </div>
-
-                              <div className="min-w-0">
-                                <div className="font-black text-slate-900 truncate">{f.title}</div>
-                                <div className="text-xs text-slate-500 mt-1">
-                                  {formatBytes(f.file_size)} • Uploaded {formatDateTime(f.created_at)}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 justify-end">
-                              
-
-                              <a
-                                href={f.file_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600 transition"
-                                title="Open"
+                            ) : canStart ? (
+                              <Link
+                                to={`/student/activities/${qq.id}/take`}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-xs transition-colors"
                               >
-                                <Download size={16} />
-                                Open
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4 text-xs text-slate-500">
-                  Tip: Use <span className="font-black text-slate-900">Preview</span> for PDFs/images, or{' '}
-                  <span className="font-black text-slate-900">Open</span> to download.
-                </div>
+                                <PlayCircle size={13} /> Start
+                              </Link>
+                            ) : (
+                              <span className="text-xs text-slate-400 font-medium">Unavailable</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
-        </div>
+        )}
+
+        {/* Tab 2: Files */}
+        {activeTab === 'files' && (
+          <div>
+            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Learning Materials & Handouts</h2>
+                <p className="text-xs text-slate-500">Download or preview lecture materials</p>
+              </div>
+
+              {/* Search & Sort Controls */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 sm:w-56">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search files..."
+                    className="w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 py-1.5 text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none transition-colors hover:border-slate-300 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                  <ArrowUpDown size={12} className="text-slate-400" />
+                  <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as any)}
+                    className="text-xs font-semibold text-slate-700 outline-none bg-transparent"
+                  >
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                    <option value="name">Name</option>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => refetchFiles()}
+                  disabled={filesFetching}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                  title="Refresh files"
+                >
+                  <RefreshCw size={12} className={filesFetching ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </div>
+
+            {visibleFiles.length === 0 ? (
+              <div className="p-12 text-center">
+                <FileText className="mx-auto h-8 w-8 text-slate-300" />
+                <h3 className="mt-2 text-sm font-semibold text-slate-900">No files found</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  No learning materials uploaded match your search query.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {visibleFiles.map((f) => {
+                  const previewKind = isPreviewable(f.content_type, f.file_url);
+
+                  return (
+                    <div
+                      key={f.id}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-slate-50/60 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                          <FileText size={16} />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-xs text-slate-900 truncate">
+                            {f.title}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {formatBytes(f.file_size)} • Uploaded {formatDateTime(f.created_at)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                        {previewKind && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreview({
+                                kind: previewKind,
+                                url: f.file_url,
+                                title: f.title,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                          >
+                            <Eye size={13} /> Preview
+                          </button>
+                        )}
+                        <a
+                          href={f.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-600 shadow-xs transition"
+                        >
+                          <Download size={13} /> Download
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Grades */}
+        {activeTab === 'grades' && (
+          <div className="p-5 space-y-6">
+            {/* 3 Semesters + Final Grade Summary Cards */}
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {[1, 2, 3].map((sNum) => {
+                const semGradeRec = semesterBreakdown[sNum];
+                const semVal =
+                  semGradeRec?.final_grade ??
+                  offering?.semesters?.[`SEMESTER_${sNum}`] ??
+                  offering?.semesters?.[`SEM${sNum}`];
+                const hasVal = typeof semVal === 'number' && !Number.isNaN(semVal);
+
+                return (
+                  <div key={sNum} className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Semester {sNum}
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-1">
+                      <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+                        {hasVal ? semVal.toFixed(1) : '—'}
+                      </span>
+                      {hasVal && <span className="text-xs font-semibold text-slate-400">/ 100</span>}
+                    </div>
+                    <div className="mt-1">
+                      {hasVal ? (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+                            semVal >= 75
+                              ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                              : 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
+                          }`}
+                        >
+                          {semVal >= 75 ? 'Passed' : 'Needs Attention'}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">Pending</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Final Grade Card */}
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                  Final Grade
+                </div>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className="font-mono text-2xl font-bold tracking-tight text-indigo-950">
+                    {computedFinalGrade !== null ? computedFinalGrade.toFixed(1) : '—'}
+                  </span>
+                  {computedFinalGrade !== null && (
+                    <span className="text-xs font-semibold text-indigo-400">/ 100</span>
+                  )}
+                </div>
+                <div className="mt-1">
+                  {computedFinalGrade !== null ? (
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+                        computedFinalGrade >= 75
+                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                          : 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
+                      }`}
+                    >
+                      {computedFinalGrade >= 75 ? 'Passed Subject' : 'Failed'}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">Awaiting marks</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Assessment Component Breakdown */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-900">
+                DepEd Standard Grading Breakdown
+              </h3>
+
+              {subjectGrades.length === 0 ? (
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-8 text-center">
+                  <p className="text-xs font-semibold text-slate-600">
+                    No detailed assessment components recorded yet for this subject.
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Scores for Written Works, Performance Tasks, and Semester Assessments will appear here once submitted.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((sNum) => {
+                    const gradeRec = semesterBreakdown[sNum];
+                    if (!gradeRec) return null;
+
+                    const wwScore = gradeRec.written_work_score ?? 0;
+                    const wwTotal = gradeRec.written_work_total ?? 0;
+                    const wwWeight = gradeRec.ww_weight ? gradeRec.ww_weight * 100 : 30;
+
+                    const ptScore = gradeRec.performance_task_score ?? 0;
+                    const ptTotal = gradeRec.performance_task_total ?? 0;
+                    const ptWeight = gradeRec.pt_weight ? gradeRec.pt_weight * 100 : 50;
+
+                    const saScore =
+                      gradeRec.semester_assessment_score ??
+                      gradeRec.quarterly_assessment_score ??
+                      0;
+                    const saTotal =
+                      gradeRec.semester_assessment_total ??
+                      gradeRec.quarterly_assessment_total ??
+                      0;
+                    const saWeight = (gradeRec.sa_weight ?? gradeRec.qa_weight)
+                      ? (gradeRec.sa_weight ?? gradeRec.qa_weight) * 100
+                      : 20;
+
+                    return (
+                      <div key={sNum} className="rounded-xl border border-slate-200/80 overflow-hidden">
+                        <div className="bg-slate-50/80 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-900">Semester {sNum} Breakdown</h4>
+                            <p className="text-[11px] text-slate-500">Written Works, Performance Tasks, Assessment</p>
+                          </div>
+                          {gradeRec.final_grade !== null && (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+                                gradeRec.final_grade >= 75
+                                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                                  : 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
+                              }`}
+                            >
+                              Grade: {gradeRec.final_grade} ({gradeRec.remarks || (gradeRec.final_grade >= 75 ? 'Passed' : 'Failed')})
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-100 text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-white">
+                                <th className="py-2.5 px-4">Component</th>
+                                <th className="py-2.5 px-4">Weight</th>
+                                <th className="py-2.5 px-4">Raw Score</th>
+                                <th className="py-2.5 px-4">Percentage</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-xs">
+                              <tr>
+                                <td className="py-3 px-4 font-semibold text-slate-900">
+                                  Written Works (WW)
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 font-mono">{wwWeight}%</td>
+                                <td className="py-3 px-4 text-slate-700 font-mono">
+                                  {wwScore} / {wwTotal}
+                                </td>
+                                <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                                  {wwTotal > 0 ? `${((wwScore / wwTotal) * 100).toFixed(1)}%` : '—'}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="py-3 px-4 font-semibold text-slate-900">
+                                  Performance Tasks (PT)
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 font-mono">{ptWeight}%</td>
+                                <td className="py-3 px-4 text-slate-700 font-mono">
+                                  {ptScore} / {ptTotal}
+                                </td>
+                                <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                                  {ptTotal > 0 ? `${((ptScore / ptTotal) * 100).toFixed(1)}%` : '—'}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="py-3 px-4 font-semibold text-slate-900">
+                                  Semester Assessment (SA)
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 font-mono">{saWeight}%</td>
+                                <td className="py-3 px-4 text-slate-700 font-mono">
+                                  {saScore} / {saTotal}
+                                </td>
+                                <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                                  {saTotal > 0 ? `${((saScore / saTotal) * 100).toFixed(1)}%` : '—'}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
-    </main>
+    </div>
   );
 }

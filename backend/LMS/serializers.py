@@ -3,9 +3,48 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.db.models import Avg
-from LMS.models import Student, Subject, SubjectOffering, Teacher, Admin, Section, Quiz, QuizQuestion, QuizChoice, QuizAttempt, QuizAnswer, QuizTopicPerformance, GradeForecast, QuarterlyGrade, GradeChangeLog
+from LMS.models import SchoolYear, Semester, Student, Subject, SubjectOffering, Teacher, Admin, Section, Quiz, QuizQuestion, QuizChoice, QuizAttempt, QuizAnswer, QuizTopicPerformance, GradeForecast, QuarterlyGrade, GradeChangeLog
 
 User = get_user_model()
+
+
+# =========================
+# ACADEMIC YEAR & SEMESTER SERIALIZERS
+# =========================
+
+class SemesterSerializer(serializers.ModelSerializer):
+    name_display = serializers.CharField(source="get_name_display", read_only=True)
+
+    class Meta:
+        model = Semester
+        fields = [
+            "id",
+            "school_year",
+            "name",
+            "name_display",
+            "is_active",
+        ]
+
+
+class SchoolYearSerializer(serializers.ModelSerializer):
+    semesters = SemesterSerializer(many=True, read_only=True)
+    active_semester = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SchoolYear
+        fields = [
+            "id",
+            "name",
+            "is_active",
+            "semesters",
+            "active_semester",
+        ]
+
+    def get_active_semester(self, obj):
+        active_sem = obj.semesters.filter(is_active=True).first()
+        if active_sem:
+            return SemesterSerializer(active_sem).data
+        return None
 
 
 # =========================
@@ -17,6 +56,8 @@ class StudentSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source="user.first_name", read_only=True)
     last_name = serializers.CharField(source="user.last_name", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
+    section_name = serializers.CharField(source="section.name", read_only=True, default="")
+    age = serializers.ReadOnlyField()
 
     section = serializers.PrimaryKeyRelatedField(
         queryset=Section.objects.all(),
@@ -34,6 +75,10 @@ class StudentSerializer(serializers.ModelSerializer):
             "email",
             "grade_level",
             "section",
+            "section_name",
+            "gender",
+            "birthdate",
+            "age",
         ]
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
@@ -107,6 +152,8 @@ class UserSerializer(serializers.ModelSerializer):
                 user=user,
                 grade_level=student_data.get("grade_level"),
                 section=student_data.get("section"),
+                gender=student_data.get("gender"),
+                birthdate=student_data.get("birthdate"),
             )
 
         elif user.role == "TEACHER":
@@ -126,6 +173,8 @@ class UserSerializer(serializers.ModelSerializer):
         # Update user fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if "status" in validated_data:
+            instance.is_active = (validated_data["status"] == "ACTIVE")
         instance.save()
 
         # ✅ HASH PASSWORD
@@ -135,13 +184,22 @@ class UserSerializer(serializers.ModelSerializer):
 
         # ✅ UPDATE STUDENT PROFILE
         if student_data and instance.role == "STUDENT":
-            Student.objects.update_or_create(
-                user=instance,
-                defaults={
-                "grade_level": student_data.get("grade_level"),
-                "section": student_data.get("section"),
+            student_obj = getattr(instance, "student_profile", None)
+            defaults = {
+                "grade_level": student_data.get("grade_level") or (student_obj.grade_level if student_obj else "GRADE_7"),
             }
+            if "section" in student_data:
+                defaults["section"] = student_data.get("section")
+            if "gender" in student_data:
+                defaults["gender"] = student_data.get("gender")
+            if "birthdate" in student_data:
+                defaults["birthdate"] = student_data.get("birthdate")
+
+            sp, _ = Student.objects.update_or_create(
+                user=instance,
+                defaults=defaults,
             )
+            instance.student_profile = sp
         
         # ✅ UPDATE TEACHER PROFILE
         if teacher_data and instance.role == "TEACHER":
@@ -239,13 +297,19 @@ class SubjectOfferingSerializer(serializers.ModelSerializer):
     def get_average(self, obj):
         qs = QuarterlyGrade.objects.filter(
         SubjectOffering=obj,
-        final_grade__isnull=False
+        final_grade__isnull=False,
+        semester__school_year__is_active=True,
     )
         avg = qs.aggregate(a=Avg("final_grade"))["a"]
         return round(avg, 2) if avg is not None else None
     def get_pendingTasks(self, obj):
-        # pending quizzes = all quizzes not CLOSED
-        return obj.quizzes.exclude(status="CLOSED").count()
+        # Count submissions awaiting teacher manual grading
+        return QuizAttempt.objects.filter(
+            quiz__SubjectOffering=obj,
+            status='SUBMITTED',
+            answers__question__question_type='SHORT_ANSWER',
+            answers__manually_graded=False
+        ).distinct().count()
     def get_teacher_name(self, obj):
         if obj.teacher:
             return f"{obj.teacher.first_name} {obj.teacher.last_name}".strip()
@@ -311,10 +375,13 @@ class StudentSubjectOfferingSerializer(serializers.ModelSerializer):
     teacher_name = serializers.SerializerMethodField()
     section_name = serializers.CharField(source="section.name", read_only=True)
     grade_level = serializers.CharField(source="section.grade_level", read_only=True)
+    room_number = serializers.CharField(read_only=True)
+    schedule = serializers.CharField(read_only=True)
 
     # computed fields
     progress = serializers.IntegerField(read_only=True)  # 0..100
     average = serializers.FloatField(read_only=True)     # 0..100
+    semesters = serializers.SerializerMethodField()
     quarters = serializers.SerializerMethodField()       # {1: 88, 2: 90, ...}
     final_grade = serializers.SerializerMethodField()
 
@@ -326,9 +393,12 @@ class StudentSubjectOfferingSerializer(serializers.ModelSerializer):
             "teacher_name",
             "section_name",
             "grade_level",
+            "room_number",
+            "schedule",
             "progress",
             "average",
             "quarters",
+            "semesters",
             "final_grade",
         )
 
@@ -337,12 +407,20 @@ class StudentSubjectOfferingSerializer(serializers.ModelSerializer):
             return f"{obj.teacher.first_name} {obj.teacher.last_name}".strip()
         return "N/A"
 
+    def get_semesters(self, obj):
+        grades = getattr(obj, "_student_quarterly_grades", [])
+        return {
+            g.semester.name.replace("SEM", "SEMESTER_"): float(g.final_grade)
+            for g in grades if g.semester_id is not None
+        }
+
     def get_quarters(self, obj):
         # expects annotation or prefetched grades in the view
         qmap = {}
         grades = getattr(obj, "_student_quarterly_grades", [])
         for g in grades:
-            qmap[g.quarter] = float(g.final_grade)
+            if g.semester_id is None and g.quarter:
+                qmap[g.quarter] = float(g.final_grade)
         return qmap
     def get_final_grade(self, obj):
         request = self.context.get("request")
@@ -351,7 +429,7 @@ class StudentSubjectOfferingSerializer(serializers.ModelSerializer):
         if not student:
             return None
 
-        qs = QuarterlyGrade.objects.filter(student=student, SubjectOffering=obj)
+        qs = QuarterlyGrade.objects.filter(student=student, SubjectOffering=obj, semester__school_year__is_active=True)
         vals = list(qs.values_list("final_grade", flat=True))
         vals = [float(v) for v in vals if v is not None]
         return round(sum(vals) / len(vals), 2) if vals else None
@@ -518,7 +596,42 @@ class QuizQuestionSerializer(serializers.ModelSerializer):
         return instance
 
 
+class SemesterReferenceField(serializers.RelatedField):
+    """Accept a semester PK, SEM1, or the React tab value SEMESTER_1.
+
+    Codes resolve only in the active school year; PKs also support historical years.
+    """
+    def __init__(self, **kwargs):
+        if not kwargs.get("read_only", False):
+            kwargs.setdefault("queryset", Semester.objects.select_related("school_year").all())
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, value):
+        code = str(value).replace("SEMESTER_", "SEM")
+        qs = self.get_queryset()
+        if code in dict(Semester.SEMESTER_CHOICES):
+            semester = qs.filter(name=code, school_year__is_active=True).first()
+            if not semester:
+                semester = qs.filter(name=code).order_by('-school_year__id').first()
+            if semester:
+                return semester
+        elif str(value).isdigit():
+            try:
+                return qs.get(pk=int(value))
+            except (Semester.DoesNotExist, Semester.MultipleObjectsReturned):
+                pass
+        else:
+            raise serializers.ValidationError("Use a semester ID, SEM1/SEM2/SEM3, or SEMESTER_1/2/3.")
+        raise serializers.ValidationError("Semester not found or ambiguous. Configure one active school year or send the semester ID.")
+
+    def to_representation(self, value):
+        return value.name.replace("SEM", "SEMESTER_")
+
+
 class QuizSerializer(serializers.ModelSerializer):
+    status = serializers.CharField(source="current_status", read_only=True)
+    semester = SemesterReferenceField(read_only=True)
+    semester_id = serializers.IntegerField(read_only=True)
     questions = QuizQuestionSerializer(many=True, read_only=True)
     teacher_name = serializers.SerializerMethodField()
     subject_name = serializers.CharField(source='SubjectOffering.name', read_only=True)
@@ -531,9 +644,10 @@ class QuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = [
+            'activity_mode',
             'id', 'quiz_id', 'SubjectOffering', 'subject_name', 'teacher', 'teacher_name',
             'title', 'description', 'posted_at', 'open_time', 'close_time',
-            'time_limit', 'quarter', 'total_points', 'passing_score', 'status',
+            'time_limit', 'semester', 'semester_id', 'total_points', 'passing_score', 'status',
             'show_correct_answers', 'shuffle_questions', 'allow_multiple_attempts',
             'questions', 'question_count', 'is_open', 'is_upcoming', 'is_closed',
             'created_at', 'updated_at', 'grade_type', 'is_editable'
@@ -562,17 +676,96 @@ class QuizSerializer(serializers.ModelSerializer):
 
 
 class QuizCreateUpdateSerializer(serializers.ModelSerializer):
+    semester = SemesterReferenceField(required=True)
+    questions = QuizQuestionSerializer(many=True, write_only=True, required=False)
+    open_time = serializers.DateTimeField(required=False, allow_null=True)
+    close_time = serializers.DateTimeField(required=False, allow_null=True)
+    time_limit = serializers.IntegerField(required=False, default=60, allow_null=True)
+    total_points = serializers.FloatField(required=False, allow_null=True)
+    passing_score = serializers.FloatField(required=False, allow_null=True)
+
     class Meta:
         model = Quiz
         fields = [
-            'SubjectOffering', 'title', 'description', 'open_time', 'close_time',
-            'time_limit', 'quarter', 'total_points', 'passing_score', 'status',
+            'activity_mode',
+            'id', 'SubjectOffering', 'title', 'description', 'open_time', 'close_time',
+            'time_limit', 'semester', 'total_points', 'passing_score', 'status',
             'show_correct_answers', 'shuffle_questions', 'allow_multiple_attempts',
-            'grade_type'
+            'grade_type', 'questions'
         ]
-        read_only_fields = ['total_points']
-        
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        from django.utils import timezone
+        attrs = super().validate(attrs)
+        status = attrs.get("status", getattr(self.instance, "status", "DRAFT"))
+        if not attrs.get("time_limit"):
+            attrs["time_limit"] = getattr(self.instance, "time_limit", 60) or 60
+        # New drafts have no schedule; explicitly opening starts immediately.
+        if self.instance is None and status in ("DRAFT", "OPEN"):
+            attrs["open_time"] = timezone.now() if status == "OPEN" else None
+            attrs["close_time"] = None
+            return attrs
+        opens = attrs.get("open_time", getattr(self.instance, "open_time", None))
+        closes = attrs.get("close_time", getattr(self.instance, "close_time", None))
+        if status == "SCHEDULED" and (opens is None or closes is None):
+            raise serializers.ValidationError({"status": "Scheduled quizzes require open and close times."})
+        if opens is not None and closes is not None and closes <= opens:
+            raise serializers.ValidationError({"close_time": "Close time must be after open time."})
+        return attrs
+
+    def validate_questions(self, questions):
+        import math
+        if self.instance is not None:
+            raise serializers.ValidationError("Edit existing questions through the question endpoints.")
+        if not questions:
+            return questions
+        for index, question in enumerate(questions, 1):
+            prefix = f"Question {index}: "
+            if not question.get("question_text", "").strip():
+                raise serializers.ValidationError(prefix + "Question text is required.")
+            points = question.get("points", 1)
+            if not math.isfinite(points) or points <= 0:
+                raise serializers.ValidationError(prefix + "Points must be a positive finite number.")
+            kind = question.get("question_type", "MULTIPLE_CHOICE")
+            choices = question.get("choices", [])
+            if kind == "SHORT_ANSWER":
+                if choices:
+                    raise serializers.ValidationError(prefix + "Short answers do not use choices.")
+                continue
+            if len(choices) < 2 or any(not c.get("choice_text", "").strip() for c in choices):
+                raise serializers.ValidationError(prefix + "Provide at least two non-empty choices.")
+            if sum(bool(c.get("is_correct")) for c in choices) != 1:
+                raise serializers.ValidationError(prefix + "Select exactly one correct answer.")
+            if kind == "TRUE_FALSE" and (len(choices) != 2 or
+                    {c["choice_text"].strip().lower() for c in choices} != {"true", "false"}):
+                raise serializers.ValidationError(prefix + "Use exactly True and False choices.")
+        return questions
+
+    def create(self, validated_data):
+        from django.db import transaction
+        questions = validated_data.pop("questions", [])
+        total_points_input = validated_data.pop("total_points", None)
+        with transaction.atomic():
+            quiz = super().create(validated_data)
+            if questions:
+                for order, question_data in enumerate(questions):
+                    question_data.pop("id", None)
+                    question_data["order"] = order
+                    for choice_order, choice in enumerate(question_data.get("choices", [])):
+                        choice.pop("id", None)
+                        choice["order"] = choice_order
+                    QuizQuestionSerializer(context=self.context).create({**question_data, "quiz": quiz})
+                quiz.total_points = sum(question.get("points", 1) for question in questions)
+            elif total_points_input is not None:
+                quiz.total_points = float(total_points_input)
+            else:
+                quiz.total_points = 100.0
+            quiz.save(update_fields=["total_points"])
+        return quiz
+
 class StudentQuizSerializer(serializers.ModelSerializer):
+    status = serializers.CharField(source="current_status", read_only=True)
     """Quiz serializer for students - hides sensitive info"""
     subject_name = serializers.CharField(source='SubjectOffering.name', read_only=True)
     teacher_name = serializers.SerializerMethodField()
@@ -585,7 +778,8 @@ class StudentQuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = [
-            'id', 'quiz_id', 'SubjectOffering', 'subject_name', 'teacher_name', 'title',
+            'activity_mode',
+            'id', 'quiz_id', 'status', 'SubjectOffering', 'subject_name', 'teacher_name', 'title',
             'description', 'open_time', 'close_time', 'time_limit',
             'total_points', 'allow_multiple_attempts', 'question_count',
             'is_open', 'is_upcoming', 'is_closed', 'user_attempts'
@@ -596,6 +790,8 @@ class StudentQuizSerializer(serializers.ModelSerializer):
     
     def get_teacher_name(self, obj):
         """Get teacher's full name"""
+        if obj.teacher is None:
+            return "Unassigned"
         name = f"{obj.teacher.first_name} {obj.teacher.last_name}".strip()
         return name if name else obj.teacher.email
     
@@ -620,30 +816,47 @@ class QuizAnswerSerializer(serializers.ModelSerializer):
     graded_by_name = serializers.SerializerMethodField()
     question_text = serializers.CharField(source='question.question_text', read_only=True)
     question_points = serializers.FloatField(source='question.points', read_only=True)
+    question_type = serializers.CharField(source='question.question_type', read_only=True)
+    question_order = serializers.IntegerField(source='question.order', read_only=True)
     correct_choice = serializers.SerializerMethodField()
-    choices = TeacherQuizChoiceSerializer(
-        source='question.choices',
-        many=True,
-        read_only=True
-    )
+    choices = serializers.SerializerMethodField()
     
     class Meta:
         model = QuizAnswer
         fields = [
-            'id', 'question', 'question_text', 'question_points',
+            'id', 'question', 'question_text', 'question_points', 'question_type', 'question_order',
             'selected_choice', 'text_answer', 'answer_file', 'answer_file_url',
             'is_correct', 'points_earned', 'manually_graded', 
             'teacher_feedback', 'graded_at', 'graded_by', 'graded_by_name', 'correct_choice', 'choices'
         ]
     
+    def get_choices(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        quiz = obj.attempt.quiz
+        is_teacher_or_admin = user and getattr(user, "role", None) in ("TEACHER", "ADMIN")
+        can_see_answers = is_teacher_or_admin or quiz.is_closed() or quiz.show_correct_answers
+        if can_see_answers:
+            return TeacherQuizChoiceSerializer(obj.question.choices.all().order_by('order'), many=True).data
+        return StudentQuizChoiceSerializer(obj.question.choices.all().order_by('order'), many=True).data
+
     def get_correct_choice(self, obj):
-        correct = obj.question.choices.filter(is_correct=True).first()
-        if correct:
-            return correct.id
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        quiz = obj.attempt.quiz
+        is_teacher_or_admin = user and getattr(user, "role", None) in ("TEACHER", "ADMIN")
+        can_see_answers = is_teacher_or_admin or quiz.is_closed() or quiz.show_correct_answers
+        if can_see_answers:
+            correct = obj.question.choices.filter(is_correct=True).first()
+            return correct.id if correct else None
         return None
     
     def get_answer_file_url(self, obj):
-        return obj.answer_file_url
+        url = obj.answer_file_url
+        if not url:
+            return ""
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request is not None else url
     
     def get_graded_by_name(self, obj):
         if obj.graded_by:
@@ -652,18 +865,41 @@ class QuizAnswerSerializer(serializers.ModelSerializer):
 
 
 class QuizAttemptSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source='group.name', read_only=True, default=None)
+    is_group_credit = serializers.SerializerMethodField()
     answers = QuizAnswerSerializer(many=True, read_only=True)
     student_name = serializers.SerializerMethodField()
     quiz_title = serializers.CharField(source='quiz.title', read_only=True)
+    subject_name = serializers.CharField(source='quiz.SubjectOffering.name', read_only=True)
+    total_points = serializers.FloatField(source='quiz.total_points', read_only=True)
+    percentage = serializers.SerializerMethodField()
+    is_closed = serializers.SerializerMethodField()
+    requires_manual_grading = serializers.SerializerMethodField()
     
     class Meta:
         model = QuizAttempt
         fields = [
-            'id', 'quiz', 'quiz_title', 'student', 'student_name',
-            'started_at', 'submitted_at', 'score', 'status', 'answers'
+            'id', 'quiz', 'quiz_title', 'subject_name', 'student', 'student_name',
+            'started_at', 'submitted_at', 'time_spent', 'score', 'total_points',
+            'percentage', 'status', 'is_closed', 'requires_manual_grading',
+            'answers', 'group_id', 'group_name', 'is_group_credit'
         ]
         read_only_fields = ['student', 'started_at', 'score']
     
+    def get_percentage(self, obj):
+        if obj.score is not None and obj.quiz.total_points > 0:
+            return round((obj.score / obj.quiz.total_points) * 100, 1)
+        return 0.0
+
+    def get_is_closed(self, obj):
+        return obj.quiz.is_closed()
+
+    def get_requires_manual_grading(self, obj):
+        return obj.quiz.questions.filter(question_type='SHORT_ANSWER').exists()
+
+    def get_is_group_credit(self, obj):
+        return obj.group_id is not None
+
     def get_student_name(self, obj):
         """Get student's full name"""
         user = obj.student.user
@@ -694,7 +930,7 @@ class QuizTopicPerformanceSerializer(serializers.ModelSerializer):
 class GradeForecastSerializer(serializers.ModelSerializer):
     subject_name = serializers.CharField(source='SubjectOffering.name', read_only=True)
     student_name = serializers.SerializerMethodField()
-    student_id = serializers.CharField(source='student.student_id', read_only=True)
+    student_id = serializers.CharField(source='student.user.school_id', read_only=True)
     
     class Meta:
         model = GradeForecast
@@ -718,8 +954,14 @@ class GradeForecastSerializer(serializers.ModelSerializer):
 # ==================== QUARTERLY GRADES SERIALIZERS ====================
 
 class QuarterlyGradeSerializer(serializers.ModelSerializer):
+    semester = SemesterReferenceField(read_only=True)
+    semester_id = serializers.IntegerField(read_only=True)
+    school_year = serializers.IntegerField(source="semester.school_year_id", read_only=True)
+    semester_assessment_score = serializers.FloatField(source="quarterly_assessment_score", read_only=True)
+    semester_assessment_total = serializers.FloatField(source="quarterly_assessment_total", read_only=True)
+    sa_weight = serializers.FloatField(source="qa_weight", read_only=True)
     student_name = serializers.SerializerMethodField()
-    student_id = serializers.CharField(source='student.student_id', read_only=True)
+    student_id = serializers.CharField(source='student.user.school_id', read_only=True)
     subject_name = serializers.CharField(source='SubjectOffering.name', read_only=True)
     
     class Meta:
@@ -727,6 +969,8 @@ class QuarterlyGradeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'student', 'student_id', 'student_name',
             'SubjectOffering', 'subject_name', 'quarter',
+            'semester', 'semester_id', 'school_year',
+            'semester_assessment_score', 'semester_assessment_total', 'sa_weight',
             'written_work_score', 'written_work_total',
             'performance_task_score', 'performance_task_total',
             'quarterly_assessment_score', 'quarterly_assessment_total',
@@ -750,22 +994,58 @@ def grade_snapshot(g) -> str:
     )
 
 class QuarterlyGradeCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating quarterly grades"""
+    """Write semester grades while retaining the existing database column names."""
+    semester = SemesterReferenceField(required=True)
+    semester_assessment_score = serializers.FloatField(source="quarterly_assessment_score", required=False)
+    semester_assessment_total = serializers.FloatField(source="quarterly_assessment_total", required=False)
+    sa_weight = serializers.FloatField(source="qa_weight", required=False)
+
+    def to_internal_value(self, data):
+        data = data.copy()
+        for old, new in (
+            ("quarterly_assessment_score", "semester_assessment_score"),
+            ("quarterly_assessment_total", "semester_assessment_total"),
+            ("qa_weight", "sa_weight"),
+        ):
+            if old in data and new not in data:
+                data[new] = data[old]
+        return super().to_internal_value(data)
     class Meta:
         model = QuarterlyGrade
         fields = [
-            'student', 'SubjectOffering', 'quarter',
+            'student', 'SubjectOffering', 'semester',
             'written_work_score', 'written_work_total',
             'performance_task_score', 'performance_task_total',
-            'quarterly_assessment_score', 'quarterly_assessment_total',
-            'ww_weight', 'pt_weight', 'qa_weight', 'remarks'
+            'semester_assessment_score', 'semester_assessment_total',
+            'ww_weight', 'pt_weight', 'sa_weight', 'remarks'
         ]
     
     def validate(self, data):
-        """Validate that weights sum to 1.0"""
-        ww = data.get('ww_weight', 0.40)
-        pt = data.get('pt_weight', 0.40)
-        qa = data.get('qa_weight', 0.20)
+        import math
+        instance = self.instance
+        semester = data.get("semester", getattr(instance, "semester", None))
+        if semester is None:
+            raise serializers.ValidationError({"semester": "Select a semester before saving."})
+        offering = data.get("SubjectOffering", getattr(instance, "SubjectOffering", None))
+        student = data.get("student", getattr(instance, "student", None))
+        request = self.context.get("request")
+        if request and (request.user.role != "TEACHER" or offering.teacher_id != request.user.pk):
+            raise serializers.ValidationError({"SubjectOffering": "You may only edit your own subject offerings."})
+        if student.section_id != offering.section_id:
+            raise serializers.ValidationError({"student": "Student is not enrolled in this offering's section."})
+        duplicates = QuarterlyGrade.objects.filter(student=student, SubjectOffering=offering, semester=semester)
+        if instance:
+            duplicates = duplicates.exclude(pk=instance.pk)
+        if duplicates.exists():
+            raise serializers.ValidationError("A grade already exists for this student, offering and semester. Update that grade instead.")
+        for field in ("ww_weight", "pt_weight", "qa_weight"):
+            value = data.get(field, getattr(instance, field, {"ww_weight": .4, "pt_weight": .4, "qa_weight": .2}[field]))
+            if not math.isfinite(value) or not 0 <= value <= 1:
+                raise serializers.ValidationError({field: "Weight must be between 0 and 1."})
+        # Validate effective weights, including unchanged values on partial updates.
+        ww = data.get('ww_weight', getattr(self.instance, 'ww_weight', 0.40))
+        pt = data.get('pt_weight', getattr(self.instance, 'pt_weight', 0.40))
+        qa = data.get('qa_weight', getattr(self.instance, 'qa_weight', 0.20))
         
         total_weight = ww + pt + qa
         if abs(total_weight - 1.0) > 0.01:  # Allow small floating point errors
@@ -787,7 +1067,7 @@ class QuarterlyGradeCreateUpdateSerializer(serializers.ModelSerializer):
             teacher=teacher,
             student=grade.student,
             SubjectOffering=grade.SubjectOffering,
-            activity=f"Quarterly Grade ({grade.quarter})",
+            activity=f"Semester Grade ({grade.semester})",
             previous_grade="N/A",
             new_grade=grade_snapshot(grade),
             change_type="CREATE",
@@ -810,7 +1090,7 @@ class QuarterlyGradeCreateUpdateSerializer(serializers.ModelSerializer):
                 teacher=teacher,
                 student=grade.student,
                 SubjectOffering=grade.SubjectOffering,
-                activity=f"Quarterly Grade ({grade.quarter})",
+                activity=f"Semester Grade ({grade.semester})",
                 previous_grade=prev,
                 new_grade=new,
                 change_type="UPDATE",
@@ -844,6 +1124,9 @@ class LoginSerializer(serializers.Serializer):
             profile = {
                 "grade_level": student.grade_level if student else None,
                 "section": student.section_id if student else None,
+                "gender": student.gender if student else None,
+                "birthdate": student.birthdate.isoformat() if (student and student.birthdate) else None,
+                "age": student.age if student else None,
             }
 
         elif user.role == "TEACHER":

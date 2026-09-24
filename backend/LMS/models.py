@@ -150,6 +150,11 @@ class Student(models.Model):
         ("GRADE_10", "Grade 10"),
     ]
 
+    GENDER_CHOICES = [
+        ("MALE", "Male"),
+        ("FEMALE", "Female"),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="student_profile")
     grade_level=models.CharField(
         max_length=20,
@@ -162,6 +167,24 @@ class Student(models.Model):
         blank=True,
         related_name="students"
     )
+    gender = models.CharField(
+        max_length=10,
+        choices=GENDER_CHOICES,
+        null=True,
+        blank=True
+    )
+    birthdate = models.DateField(
+        null=True,
+        blank=True
+    )
+
+    @property
+    def age(self):
+        if not self.birthdate:
+            return None
+        from datetime import date
+        today = date.today()
+        return today.year - self.birthdate.year - ((today.month, today.day) < (self.birthdate.month, self.birthdate.day))
 
     def __str__(self):
         return f"Student: {self.user.school_id} ({self.grade_level})"
@@ -185,11 +208,61 @@ class Admin(models.Model):
 
     def __str__(self):
         return f"Admin: {self.user.school_id}"
+
+
+
+# ACADEMIC YEAR AND SEMESTER
+
+class SchoolYear(models.Model):
+    name = models.CharField(max_length=20, unique=True)
+    is_active = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            SchoolYear.objects.filter(is_active=True).exclude(id=self.id).update(is_active=False)
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+class Semester(models.Model):
+
+    SEMESTER_CHOICES = [
+        ('SEM1','Semester 1'),
+        ('SEM2','Semester 2'),
+        ('SEM3','Semester 3'),
+    ]
+
+    school_year = models.ForeignKey(SchoolYear, on_delete=models.CASCADE, related_name="semesters")
+    name = models.CharField(max_length=10, choices=SEMESTER_CHOICES)
+    is_active = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("school_year",'name')
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.school_year.name} - {self.get_name_display()}"
     
+
+@receiver(post_save, sender=SchoolYear)
+def create_semester(sender, instance, created, **kwargs):
+    if created:
+
+        semesters = [
+            'SEM1',
+            'SEM2',
+            'SEM3'
+        ]
+
+        for semester in semesters:
+            Semester.objects.create(school_year=instance, name=semester)
+
 # ==================== QUARTERLY GRADES SYSTEM ====================
 
 class QuarterlyGrade(models.Model):
-    """Stores student grades per quarter with weighted components"""
+    """Semester grades, with legacy quarterly records preserved during migration."""
     QUARTER_CHOICES = [
         ('Q1', 'First Quarter'),
         ('Q2', 'Second Quarter'),
@@ -199,7 +272,13 @@ class QuarterlyGrade(models.Model):
     
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="quarterly_grades")
     SubjectOffering = models.ForeignKey(SubjectOffering, on_delete=models.CASCADE, related_name="quarterly_grades")
-    quarter = models.CharField(max_length=2, choices=QUARTER_CHOICES)
+    # Retained for existing quarterly records during migration.
+    quarter = models.CharField(max_length=2, choices=QUARTER_CHOICES, blank=True, default="")
+    semester = models.ForeignKey(
+        Semester, on_delete=models.PROTECT, related_name="grades",
+        null=True, blank=True,
+        help_text="Required for new semester grades; null only for legacy quarterly records.",
+    )
     
     # Component scores (raw scores, not weighted)
     written_work_score = models.FloatField(default=0.0, help_text="Total WW score")
@@ -225,7 +304,17 @@ class QuarterlyGrade(models.Model):
     remarks = models.TextField(blank=True, help_text="Teacher comments/remarks")
     
     class Meta:
-        unique_together = ['student', 'SubjectOffering', 'quarter']
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "SubjectOffering", "semester"],
+                name="unique_student_offering_semester",
+            ),
+            models.UniqueConstraint(
+                fields=["student", "SubjectOffering", "quarter"],
+                condition=models.Q(semester__isnull=True),
+                name="unique_legacy_student_offering_quarter",
+            ),
+        ]
         ordering = ['student', 'SubjectOffering', 'quarter']
     
     def calculate_final_grade(self):
@@ -245,7 +334,7 @@ class QuarterlyGrade(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.student.user.email} - {self.SubjectOffering.name} - {self.quarter}: {self.final_grade:.2f}%"
+        return f"{self.student.user.email} - {self.SubjectOffering.name} - {self.semester or self.quarter}: {self.final_grade:.2f}%"
     
 class Quiz(models.Model):
     STATUS_CHOICES = [
@@ -258,21 +347,30 @@ class Quiz(models.Model):
     GRADE_TYPE_CHOICES = [
         ('WRITTEN_WORK', 'Written Work'),
         ('PERFORMANCE_TASK', 'Performance Task'),
-        ('QUARTERLY_EXAM', 'Quarterly Exam'),
+        ('FINAL_EXAM', 'Final Exam'),
     ]
     
     quiz_id = models.CharField(max_length=50, unique=True, blank=True)
-    quarter = models.CharField(max_length=2, choices=QuarterlyGrade.QUARTER_CHOICES, default='Q1')
+    semester = models.ForeignKey(Semester, on_delete=models.CASCADE, related_name='quizzes')
     SubjectOffering = models.ForeignKey(SubjectOffering, on_delete=models.CASCADE, related_name="quizzes")
     teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_quizzes", null=True, blank=True)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    ACTIVITY_MODE_CHOICES = [
+        ('INDIVIDUAL', 'Individual'),
+        ('GROUP', 'By Group'),
+    ]
+    activity_mode = models.CharField(
+        max_length=10, choices=ACTIVITY_MODE_CHOICES, default='INDIVIDUAL'
+    )
     grade_type = models.CharField(max_length=20, choices=GRADE_TYPE_CHOICES, default='WRITTEN_WORK')
     
+    group_revision = models.PositiveIntegerField(default=0)
+
     # Time management
     posted_at = models.DateTimeField(auto_now_add=True, null=True)
-    open_time = models.DateTimeField()
-    close_time = models.DateTimeField()
+    open_time = models.DateTimeField(null=True, blank=True)
+    close_time = models.DateTimeField(null=True, blank=True)
     time_limit = models.IntegerField(help_text="Minutes to complete quiz")
     
     # Quiz settings
@@ -284,6 +382,8 @@ class Quiz(models.Model):
     show_correct_answers = models.BooleanField(default=False)
     shuffle_questions = models.BooleanField(default=False)
     allow_multiple_attempts = models.BooleanField(default=False)
+    activity_mode = models.CharField(max_length=50, default='INDIVIDUAL', blank=True)
+    group_revision = models.IntegerField(default=1, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
@@ -297,19 +397,36 @@ class Quiz(models.Model):
             self.quiz_id = f"QZ{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)
     
-    def is_open(self):
-        from django.utils import timezone
+    def current_status(self, now=None):
+        # Drafts need publishing; an explicit early close remains closed.
+        if self.status in ("DRAFT", "CLOSED"):
+            return self.status
+        now = now or timezone.now()
+        if self.close_time is not None and now >= self.close_time:
+            return "CLOSED"
+        if self.open_time is not None and now < self.open_time:
+            return "SCHEDULED"
+        return "OPEN"
+
+    @classmethod
+    def sync_statuses(cls, queryset):
+        """Persist due transitions when quizzes are requested (no background worker)."""
+        from django.db.models import Q
         now = timezone.now()
-        return self.open_time <= now <= self.close_time
-    
+        active = queryset.filter(status__in=["SCHEDULED", "OPEN"])
+        active.filter(close_time__lte=now).update(status="CLOSED", updated_at=now)
+        active.filter(Q(close_time__isnull=True) | Q(close_time__gt=now), open_time__gt=now).exclude(status="SCHEDULED").update(status="SCHEDULED", updated_at=now)
+        active.filter(Q(close_time__isnull=True) | Q(close_time__gt=now), Q(open_time__isnull=True) | Q(open_time__lte=now)).exclude(status="OPEN").update(status="OPEN", updated_at=now)
+
+    def is_open(self):
+        return self.current_status() == "OPEN"
+
     def is_upcoming(self):
-        from django.utils import timezone
-        return timezone.now() < self.open_time
-    
+        return self.current_status() == "SCHEDULED"
+
     def is_closed(self):
-        from django.utils import timezone
-        return timezone.now() > self.close_time
-    
+        return self.current_status() == "CLOSED"
+
     def is_editable(self):
         now = timezone.now()
 
@@ -324,6 +441,23 @@ class Quiz(models.Model):
         return True
     
 
+
+
+class QuizActivityGroup(models.Model):
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='activity_groups')
+    name = models.CharField(max_length=80)
+    members = models.ManyToManyField(Student, related_name='quiz_activity_groups', blank=True)
+    source_attempt = models.ForeignKey('QuizAttempt', on_delete=models.SET_NULL, null=True, blank=True, related_name='group_source_for')
+    question_grades = models.JSONField(default=list, blank=True)
+    graded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='graded_activity_groups')
+    graded_at = models.DateTimeField(null=True, blank=True)
+    grading_revision = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return self.name
 
 
 class QuizQuestion(models.Model):
@@ -362,11 +496,18 @@ class QuizAttempt(models.Model):
     
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name="attempts")
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="quiz_attempts")
+    group = models.ForeignKey(QuizActivityGroup, on_delete=models.CASCADE, null=True, blank=True, related_name='grade_credits')
     started_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    time_spent = models.PositiveIntegerField(default=0, help_text="Time spent in seconds")
     score = models.FloatField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IN_PROGRESS')
     
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['group', 'student'], name='unique_group_grade_credit'),
+        ]
+
     def __str__(self):
         return f"{self.student.user.email} - {self.quiz.title}"
 

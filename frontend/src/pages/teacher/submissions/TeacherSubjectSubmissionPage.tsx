@@ -1,286 +1,950 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { Link, useParams } from "react-router-dom";
+import {
+  useMemo,
+  useState,
+} from "react";
 
-type Detail = {
-  subject_offering_id: number;
-  subject: string;
-  total_students: number;
-  totals: { attempts: number; unique_students: number; submission_rate: number };
-  quizzes: Array<{
-    quiz_id: number;
-    title: string;
-    attempts: number;
-    unique_students: number;
-    status: string;
-    open_time?: string;
-    close_time?: string;
-  }>;
-};
+import {
+  Link,
+  useParams,
+} from "react-router-dom";
 
-type SubmissionRow = {
-  attempt_id: number;
-  student_id: number;
-  student_name: string;
-  student_email: string;
-  submitted_at: string;
-  score: number;
-  status: string;
-};
+import {
+  useQueryClient,
+} from "@tanstack/react-query";
 
-function getToken(): string | null {
-  const savedUser = localStorage.getItem("user");
-  try {
-    return savedUser ? JSON.parse(savedUser).token : null;
-  } catch {
-    return null;
-  }
-}
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Users,
+  ArrowLeft,
+} from "lucide-react";
+
+import {
+  useTeacherSubjectSubmissionDetail,
+} from "../../../hooks/useTeacherSubjects";
+
+import {
+  getQuizStudentSubmissions,
+} from "../../../api/teacherApi";
+
+import type {
+  StudentSubmission,
+} from "../../../types/teacherTypes";
+
+/* ==============================
+   Helpers
+============================== */
 
 /**
- * Deduplicate by student_id, keeping the HIGHEST score.
- * If scores tie, keep the most recently submitted.
+ * One row per student.
+ *
+ * If a student has multiple attempts:
+ * 1. Keep the highest score.
+ * 2. If tied, keep the most recent.
  */
-function uniqueByStudentHighestScore(rows: SubmissionRow[]) {
-  const map = new Map<number, SubmissionRow>();
+function uniqueByStudentHighestScore(
+  rows: StudentSubmission[]
+) {
+  const map =
+    new Map<
+      number,
+      StudentSubmission
+    >();
 
-  for (const r of rows) {
-    const prev = map.get(r.student_id);
-    if (!prev) {
-      map.set(r.student_id, r);
+  for (const row of rows) {
+    const previous =
+      map.get(
+        row.student_id
+      );
+
+    if (!previous) {
+      map.set(
+        row.student_id,
+        row
+      );
+
       continue;
     }
 
-    const prevScore = Number.isFinite(prev.score) ? prev.score : 0;
-    const currScore = Number.isFinite(r.score) ? r.score : 0;
+    const previousScore =
+      Number.isFinite(
+        previous.score
+      )
+        ? previous.score
+        : 0;
 
-    if (currScore > prevScore) {
-      map.set(r.student_id, r);
+    const currentScore =
+      Number.isFinite(
+        row.score
+      )
+        ? row.score
+        : 0;
+
+    if (
+      currentScore >
+      previousScore
+    ) {
+      map.set(
+        row.student_id,
+        row
+      );
+
       continue;
     }
 
-    if (currScore === prevScore) {
-      const prevTime = new Date(prev.submitted_at).getTime();
-      const currTime = new Date(r.submitted_at).getTime();
-      if (currTime > prevTime) map.set(r.student_id, r);
+    if (
+      currentScore ===
+      previousScore
+    ) {
+      const previousTime =
+        new Date(
+          previous.submitted_at
+        ).getTime();
+
+      const currentTime =
+        new Date(
+          row.submitted_at
+        ).getTime();
+
+      if (
+        currentTime >
+        previousTime
+      ) {
+        map.set(
+          row.student_id,
+          row
+        );
+      }
     }
   }
 
-  // Sort: highest score first; if tie, latest submission first
-  return Array.from(map.values()).sort((a, b) => {
-    const sa = Number.isFinite(a.score) ? a.score : 0;
-    const sb = Number.isFinite(b.score) ? b.score : 0;
-    if (sb !== sa) return sb - sa;
-    return new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime();
-  });
+  return Array.from(
+    map.values()
+  ).sort(
+    (
+      first,
+      second
+    ) => {
+      const firstScore =
+        Number.isFinite(
+          first.score
+        )
+          ? first.score
+          : 0;
+
+      const secondScore =
+        Number.isFinite(
+          second.score
+        )
+          ? second.score
+          : 0;
+
+      if (
+        secondScore !==
+        firstScore
+      ) {
+        return (
+          secondScore -
+          firstScore
+        );
+      }
+
+      return (
+        new Date(
+          second.submitted_at
+        ).getTime() -
+        new Date(
+          first.submitted_at
+        ).getTime()
+      );
+    }
+  );
 }
 
+function formatDateTime(
+  value?: string | null
+) {
+  if (!value) {
+    return "—";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "—";
+  }
+
+  return date.toLocaleString();
+}
+
+/* ==============================
+   Component
+============================== */
+
 export default function TeacherSubjectSubmissionsPage() {
-  const { subjectOfferingId } = useParams<{ subjectOfferingId: string }>();
-  const id = Number(subjectOfferingId || 0);
-  const base = "http://127.0.0.1:8000/api";
+  const {
+    subjectOfferingId,
+  } =
+    useParams<{
+      subjectOfferingId:
+        string;
+    }>();
 
-  const [data, setData] = useState<Detail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const subjectId =
+    Number(
+      subjectOfferingId ||
+        0
+    );
 
-  const [openQuizId, setOpenQuizId] = useState<number | null>(null);
-  const [quizSubs, setQuizSubs] = useState<Record<number, SubmissionRow[]>>({});
-  const [subsLoadingQuizId, setSubsLoadingQuizId] = useState<number | null>(null);
-  const [subsError, setSubsError] = useState<string | null>(null);
+  const queryClient =
+    useQueryClient();
 
-  useEffect(() => {
-    const token = getToken();
-    if (!token || !id) {
-      setErrorMsg("Invalid or missing subject offering.");
-      setLoading(false);
+  /*
+   * Main subject detail
+   */
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } =
+    useTeacherSubjectSubmissionDetail(
+      subjectId
+    );
+
+  /*
+   * UI state only
+   */
+  const [
+    openQuizId,
+    setOpenQuizId,
+  ] =
+    useState<number | null>(
+      null
+    );
+
+  /*
+   * Per-quiz submission data
+   *
+   * We keep only the result map
+   * here because quizzes are
+   * loaded lazily when expanded.
+   *
+   * React Query still owns the
+   * network/cache behavior.
+   */
+  const [
+    quizSubmissions,
+    setQuizSubmissions,
+  ] =
+    useState<
+      Record<
+        number,
+        StudentSubmission[]
+      >
+    >({});
+
+  const [
+    loadingQuizId,
+    setLoadingQuizId,
+  ] =
+    useState<number | null>(
+      null
+    );
+
+  const [
+    quizErrors,
+    setQuizErrors,
+  ] =
+    useState<
+      Record<
+        number,
+        string
+      >
+    >({});
+
+  /*
+   * Lazy-load quiz submissions
+   * using React Query's cache.
+   */
+  async function loadQuizSubmissions(
+    quizId: number
+  ) {
+    /*
+     * Already loaded in local view.
+     */
+    if (
+      quizSubmissions[
+        quizId
+      ]
+    ) {
       return;
     }
 
-    const headers = { Authorization: `Bearer ${token}` };
+    setLoadingQuizId(
+      quizId
+    );
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        setErrorMsg(null);
+    setQuizErrors(
+      (
+        previous
+      ) => {
+        const next = {
+          ...previous,
+        };
 
-        const res = await axios.get<Detail>(`${base}/teacher/submissions/subject/${id}/`, { headers });
-        setData(res.data);
-      } catch {
-        setErrorMsg("Failed to load subject submissions detail.");
-      } finally {
-        setLoading(false);
+        delete next[
+          quizId
+        ];
+
+        return next;
       }
-    };
-
-    load();
-  }, [id]);
-
-  const loadQuizSubmissions = async (quizId: number) => {
-    const token = getToken();
-    if (!token) return;
-
-    if (quizSubs[quizId]) return;
-
-    setSubsError(null);
-    setSubsLoadingQuizId(quizId);
+    );
 
     try {
-      // Submitted + graded attempts
-      const res = await axios.get<SubmissionRow[]>(
-        `${base}/teacher/quizzes/${quizId}/student_answers/`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const submissions =
+        await queryClient.fetchQuery(
+          {
+            queryKey: [
+              "teacher",
+              "quizzes",
+              quizId,
+              "submissions",
+            ],
+
+            queryFn: () =>
+              getQuizStudentSubmissions(
+                quizId
+              ),
+
+            staleTime:
+              2 *
+              60 *
+              1000,
+          }
+        );
+
+      setQuizSubmissions(
+        (
+          previous
+        ) => ({
+          ...previous,
+
+          [quizId]:
+            submissions,
+        })
+      );
+    } catch (error) {
+      console.error(
+        "Failed to load quiz submissions:",
+        error
       );
 
-      setQuizSubs((prev) => ({ ...prev, [quizId]: res.data || [] }));
-    } catch {
-      setSubsError("Failed to load submitted students for this quiz.");
-    } finally {
-      setSubsLoadingQuizId(null);
-    }
-  };
+      setQuizErrors(
+        (
+          previous
+        ) => ({
+          ...previous,
 
-  const toggleQuiz = async (quizId: number) => {
-    if (openQuizId === quizId) {
-      setOpenQuizId(null);
-      setSubsError(null);
+          [quizId]:
+            error instanceof
+            Error
+              ? error.message
+              : "Failed to load submitted students.",
+        })
+      );
+    } finally {
+      setLoadingQuizId(
+        (
+          current
+        ) =>
+          current ===
+          quizId
+            ? null
+            : current
+      );
+    }
+  }
+
+  async function toggleQuiz(
+    quizId: number
+  ) {
+    if (
+      openQuizId ===
+      quizId
+    ) {
+      setOpenQuizId(
+        null
+      );
+
       return;
     }
-    setOpenQuizId(quizId);
-    await loadQuizSubmissions(quizId);
-  };
 
-  if (loading) return <div className="p-10 text-center">Loading…</div>;
-  if (errorMsg) return <div className="p-10 text-center text-red-600">{errorMsg}</div>;
-  if (!data) return <div className="p-10 text-center">No data.</div>;
+    setOpenQuizId(
+      quizId
+    );
+
+    await loadQuizSubmissions(
+      quizId
+    );
+  }
+
+  /*
+   * Invalid route
+   */
+  if (
+    !Number.isFinite(
+      subjectId
+    ) ||
+    subjectId <= 0
+  ) {
+    return (
+      <ErrorState
+        message="Invalid or missing subject offering."
+      />
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <LoadingState />
+    );
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        message={
+          error instanceof
+          Error
+            ? error.message
+            : "Failed to load subject submissions."
+        }
+        onRetry={() =>
+          refetch()
+        }
+      />
+    );
+  }
+
+  if (!data) {
+    return (
+      <ErrorState
+        message="No submission data available."
+      />
+    );
+  }
 
   return (
-    <section className="flex flex-col bg-slate-50/30 min-h-screen p-6 font-sans">
-      <div className="mx-auto w-full max-w-screen space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Link to="/teacher/submissions" className="text-sm font-bold text-indigo-600 hover:underline">
-              ← Back to Submissions
-            </Link>
-            <h1 className="text-2xl font-bold text-gray-900 mt-2">{data.subject}</h1>
-            <p className="text-sm text-gray-600">
-              Unique students: {data.totals.unique_students}/{data.total_students} •{" "}
-              {data.totals.submission_rate}% • Attempts: {data.totals.attempts}
-            </p>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <Link
+            to="/teacher/submissions"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shrink-0 mb-3"
+          >
+            <ArrowLeft size={13} />
+            <span>Back to Submissions</span>
+          </Link>
+
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            {data.subject}
+          </h1>
+
+          <p className="mt-1 text-sm text-slate-500">
+            <span className="font-semibold text-slate-800">
+              {data.totals.unique_students}
+            </span>
+            {" / "}
+            <span className="font-semibold text-slate-800">
+              {data.total_students}
+            </span>{" "}
+            students attempted •{" "}
+            <span className="font-semibold text-indigo-600">
+              {data.totals.submission_rate}% rate
+            </span>{" "}
+            • {data.totals.attempts} total attempt
+            {data.totals.attempts === 1 ? "" : "s"}
+          </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <div className="text-sm font-black text-slate-900 uppercase tracking-widest">Quizzes</div>
-            <div className="text-xs text-slate-500 mt-1">
-              Click a quiz to see submitted students (deduped by student, highest score shown)
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex self-start items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 shadow-xs transition-colors"
+        >
+          <RefreshCw
+            size={13}
+            className={isFetching ? "animate-spin text-indigo-600" : "text-slate-400"}
+          />
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      {/* Summary */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SummaryCard
+          label="Unique Students"
+          value={data.totals.unique_students}
+          description={`Out of ${data.total_students} enrolled`}
+        />
+
+        <SummaryCard
+          label="Total Attempts"
+          value={data.totals.attempts}
+          description="Submitted quiz attempts"
+        />
+
+        <SummaryCard
+          label="Quizzes"
+          value={data.quizzes.length}
+          description="Quizzes in this subject"
+        />
+      </div>
+
+      {/* Quizzes */}
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+          <h2 className="text-sm font-semibold text-slate-900">
+            Quiz Submission Breakdown
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Expand a quiz to view students. Multiple attempts are reduced to the student's highest score.
+          </p>
+        </div>
+
+
+          {data.quizzes.length ===
+          0 ? (
+
+            <div className="p-8 text-center text-sm text-slate-500">
+              No quizzes yet.
             </div>
-          </div>
 
-          {data.quizzes.length === 0 ? (
-            <div className="p-6 text-sm text-slate-600">No quizzes yet.</div>
           ) : (
+
             <div className="divide-y divide-slate-100">
-              {data.quizzes.map((q) => {
-                const isOpen = openQuizId === q.quiz_id;
 
-                const rawSubs = quizSubs[q.quiz_id] || [];
-                const subs = uniqueByStudentHighestScore(rawSubs);
+              {data.quizzes.map(
+                (
+                  quiz
+                ) => {
 
-                const isSubsLoading = subsLoadingQuizId === q.quiz_id;
+                  const isOpen =
+                    openQuizId ===
+                    quiz.quiz_id;
 
-                return (
-                  <div key={q.quiz_id}>
-                    <button
-                      type="button"
-                      onClick={() => void toggleQuiz(q.quiz_id)}
-                      className="w-full text-left px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition"
+                  const raw =
+                    quizSubmissions[
+                      quiz.quiz_id
+                    ] || [];
+
+                  const submissions =
+                    uniqueByStudentHighestScore(
+                      raw
+                    );
+
+                  const isQuizLoading =
+                    loadingQuizId ===
+                    quiz.quiz_id;
+
+                  const quizError =
+                    quizErrors[
+                      quiz.quiz_id
+                    ];
+
+                  return (
+
+                    <div
+                      key={
+                        quiz.quiz_id
+                      }
                     >
-                      <div className="min-w-0">
-                        <div className="font-bold text-slate-900 truncate">{q.title}</div>
-                        <div className="text-xs text-slate-500">Status: {q.status}</div>
-                      </div>
 
-                      <div className="text-right">
-                        <div className="text-sm font-black text-slate-900">Attempts: {q.attempts}</div>
-                        <div className="text-xs text-slate-500">Unique Students: {q.unique_students}</div>
-                        <div className="text-xs text-indigo-600 font-bold mt-1">
-                          {isOpen ? "Hide students ▲" : "View students ▼"}
-                        </div>
-                      </div>
-                    </button>
+                      {/* Quiz row */}
 
-                    {isOpen && (
-                      <div className="bg-slate-50 border-t border-slate-100 px-6 py-4">
-                        {isSubsLoading && <div className="text-sm text-slate-600">Loading students…</div>}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleQuiz(
+                            quiz.quiz_id
+                          )
+                        }
+                        className="w-full text-left px-6 py-5 hover:bg-slate-50 transition"
+                      >
 
-                        {!isSubsLoading && subsError && (
-                          <div className="text-sm text-red-600">{subsError}</div>
-                        )}
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
-                        {!isSubsLoading && !subsError && subs.length === 0 && (
-                          <div className="text-sm text-slate-600">No submissions yet.</div>
-                        )}
+                          <div className="min-w-0">
 
-                        {!isSubsLoading && !subsError && subs.length > 0 && (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="text-xs font-black text-slate-700 uppercase tracking-widest">
-                                Submitted Students ({subs.length})
+                            <div className="font-black text-slate-900 truncate">
+                              {
+                                quiz.title
+                              }
+                            </div>
+
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+
+                              <span>
+                                Status:{" "}
+                                <strong className="text-slate-700">
+                                  {
+                                    quiz.status
+                                  }
+                                </strong>
+                              </span>
+
+                              {quiz.open_time && (
+                                <span>
+                                  Open:{" "}
+                                  {
+                                    formatDateTime(
+                                      quiz.open_time
+                                    )
+                                  }
+                                </span>
+                              )}
+
+                              {quiz.close_time && (
+                                <span>
+                                  Close:{" "}
+                                  {
+                                    formatDateTime(
+                                      quiz.close_time
+                                    )
+                                  }
+                                </span>
+                              )}
+
+                            </div>
+
+                          </div>
+
+                          <div className="flex items-center gap-5 shrink-0">
+
+                            <div className="text-right">
+
+                              <div className="text-sm font-black text-slate-900">
+                                {
+                                  quiz.attempts
+                                }{" "}
+                                attempt
+                                {quiz.attempts ===
+                                1
+                                  ? ""
+                                  : "s"}
                               </div>
 
-                              {/* ✅ matches your route: /teacher/activities/:id/grading */}
-                              <Link
-                                to={`/teacher/activities/${q.quiz_id}/grading`}
-                                className="text-xs text-indigo-600 font-bold hover:underline"
-                              >
-                                Open grading →
-                              </Link>
+                              <div className="text-xs text-slate-500">
+                                {
+                                  quiz.unique_students
+                                }{" "}
+                                unique student
+                                {quiz.unique_students ===
+                                1
+                                  ? ""
+                                  : "s"}
+                              </div>
+
                             </div>
 
-                            <div className="divide-y divide-slate-200 rounded-xl bg-white border border-slate-200 overflow-hidden">
-                              {subs.map((s) => (
-                                <div
-                                  key={s.attempt_id}
-                                  className="px-4 py-3 flex items-center justify-between gap-4"
-                                >
-                                  <div className="min-w-0">
-                                    <div className="font-bold text-slate-900 truncate">{s.student_name}</div>
-                                    <div className="text-xs text-slate-500 truncate">{s.student_email}</div>
-                                    <div className="text-xs text-slate-500">
-                                      Best attempt submitted: {new Date(s.submitted_at).toLocaleString()}
-                                    </div>
-                                  </div>
+                            <div className="h-9 w-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500">
 
-                                  <div className="text-right shrink-0">
-                                    <div className="text-sm font-black text-slate-900">
-                                      {(s.score ?? 0).toFixed(1)}
-                                    </div>
-                                    <div className="text-xs text-slate-500">{s.status}</div>
+                              {isOpen ? (
+                                <ChevronUp
+                                  size={
+                                    17
+                                  }
+                                />
+                              ) : (
+                                <ChevronDown
+                                  size={
+                                    17
+                                  }
+                                />
+                              )}
 
-                                    {/* ✅ matches your route */}
-                                    <Link
-                                      to={`/teacher/activities/${q.quiz_id}/grading`}
-                                      className="text-xs text-indigo-600 font-bold hover:underline"
-                                    >
-                                      Grade →
-                                    </Link>
-                                  </div>
-                                </div>
-                              ))}
                             </div>
+
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+
+                        </div>
+
+                      </button>
+
+                      {/* Expanded */}
+
+                      {isOpen && (
+
+                        <div className="border-t border-slate-100 bg-slate-50 px-6 py-5">
+
+                          {isQuizLoading ? (
+
+                            <div className="text-sm text-slate-500">
+                              Loading
+                              students...
+                            </div>
+
+                          ) : quizError ? (
+
+                            <div className="flex items-center gap-2 text-sm text-rose-600">
+                              <AlertCircle
+                                size={
+                                  16
+                                }
+                              />
+
+                              {
+                                quizError
+                              }
+                            </div>
+
+                          ) : submissions.length ===
+                            0 ? (
+
+                            <div className="text-sm text-slate-500">
+                              No
+                              submissions
+                              yet.
+                            </div>
+
+                          ) : (
+
+                            <QuizStudents
+                              quizId={
+                                quiz.quiz_id
+                              }
+                              submissions={
+                                submissions
+                              }
+                            />
+
+                          )}
+
+                        </div>
+
+                      )}
+
+                    </div>
+
+                  );
+                }
+              )}
+
             </div>
+
           )}
-        </div>
+
       </div>
-    </section>
+    </div>
+  );
+}
+
+/* ==============================
+   Student List
+============================== */
+
+function QuizStudents({
+  quizId,
+  submissions,
+}: {
+  quizId: number;
+  submissions:
+    StudentSubmission[];
+}) {
+  return (
+    <div className="space-y-3">
+
+      <div className="flex items-center justify-between gap-3">
+
+        <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-700">
+
+          <Users
+            size={
+              15
+            }
+          />
+
+          Submitted Students (
+          {
+            submissions.length
+          }
+          )
+
+        </div>
+
+        <Link
+          to={`/teacher/activities/${quizId}/grading`}
+          className="text-xs font-black text-indigo-600 hover:underline"
+        >
+          Open grading →
+        </Link>
+
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
+
+        {submissions.map(
+          (
+            submission
+          ) => (
+
+          <div
+            key={
+              submission.attempt_id
+            }
+            className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+          >
+
+            <div className="min-w-0">
+
+              <div className="font-black text-slate-900 truncate">
+                {
+                  submission.student_name
+                }
+              </div>
+
+              <div className="text-xs text-slate-500 truncate">
+                {
+                  submission.student_email
+                }
+              </div>
+
+              <div className="mt-1 text-xs text-slate-400">
+                Best attempt
+                submitted:{" "}
+                {
+                  formatDateTime(
+                    submission.submitted_at
+                  )
+                }
+              </div>
+
+            </div>
+
+            <div className="flex items-center gap-5 shrink-0">
+
+              <div className="text-right">
+
+                <div className="text-lg font-black text-slate-900">
+                  {Number(
+                    submission.score ??
+                      0
+                  ).toFixed(
+                    1
+                  )}
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  {
+                    submission.status
+                  }
+                </div>
+
+              </div>
+
+              <Link
+                to={`/teacher/activities/${quizId}/grading`}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-indigo-600 hover:bg-indigo-50"
+              >
+                Grade
+              </Link>
+
+            </div>
+
+          </div>
+
+          )
+        )}
+
+      </div>
+
+    </div>
+  );
+}
+
+/* ==============================
+   Summary Card
+============================== */
+
+function SummaryCard({
+  label,
+  value,
+  description,
+}: {
+  label: string;
+  value: number;
+  description: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm hover:border-indigo-200 transition-all">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+        {label}
+      </div>
+
+      <div className="mt-1.5 text-2xl font-bold tracking-tight text-slate-900 font-mono">
+        {value}
+      </div>
+
+      <div className="mt-0.5 text-xs text-slate-400">
+        {description}
+      </div>
+    </div>
+  );
+}
+
+/* ==============================
+   States
+============================== */
+
+function LoadingState() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-24 rounded-xl border border-slate-200/80 bg-white animate-pulse"
+        />
+      ))}
+    </div>
+  );
+}
+
+function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-8 text-center max-w-xl mx-auto">
+      <AlertCircle size={24} className="mx-auto text-rose-500" />
+
+      <div className="mt-2 font-semibold text-sm text-slate-900">
+        {message}
+      </div>
+
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 transition-colors shadow-xs"
+        >
+          Try Again
+        </button>
+      )}
+    </div>
   );
 }

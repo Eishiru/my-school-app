@@ -10,11 +10,18 @@ import {
   Trash2,
   ChevronRight,
   ArrowUpRight,
+  Edit3,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 
-import AccountRole from "./accountRole";
 import EditModal from "./EditModal";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  useAdminUsers,
+  useDeleteAdminUser,
+  useUpdateAdminUser,
+} from "../../../hooks/useAdminData";
 
 // ✅ Unified UserAccount type (Department -> Subjects)
 type UserAccount = {
@@ -26,6 +33,9 @@ type UserAccount = {
 
   subjects?: { id: number; name: string }[];
   gradeLevel?: string;
+  gender?: "MALE" | "FEMALE" | string;
+  birthdate?: string;
+  age?: number | null;
 
   role: "STUDENT" | "TEACHER" | "ADMIN";
   status: "Active" | "Inactive";
@@ -67,17 +77,14 @@ const displayGrade = (gl?: string) => {
 };
 
 const AccountListPage: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
-
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [users, setUsers] = useState<UserAccount[]>([]);
-  const [loading, setLoading] = useState(true);
-
+  const { data: rawUsers, isLoading: loading } = useAdminUsers();
+  const deleteMutation = useDeleteAdminUser();
+  const updateMutation = useUpdateAdminUser();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<UserAccount | null>(null);
-
-  // ✅ Student grade-level filter
   const [activeGrade, setActiveGrade] = useState<number | "ALL">("ALL");
 
   const location = useLocation();
@@ -89,57 +96,66 @@ const AccountListPage: React.FC = () => {
     if (location.state?.activeTab) setActiveTab(location.state.activeTab);
   }, [location.state]);
 
-  // Reset grade filter when leaving Students tab
   useEffect(() => {
     if (activeTab !== "student") setActiveGrade("ALL");
   }, [activeTab]);
 
-  // --- Load users from Django API ---
   useEffect(() => {
-    const fetchUsers = async () => {
-      setLoading(true);
-      try {
-        const token = localStorage.getItem("access");
-
-        const res = await fetch("http://127.0.0.1:8000/api/user/", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!res.ok) throw new Error("Failed to fetch users");
-
-        const data = await res.json();
-
-        const mapped: UserAccount[] = (Array.isArray(data) ? data : []).map(
-          (u: any) => ({
-            id: String(u.id),
-            firstname: u.first_name ?? "",
-            lastname: u.last_name ?? "",
-            email: u.email ?? "",
-            role: u.role,
-
-            gradeLevel: u.student_profile?.grade_level ?? undefined,
-            subjects: Array.isArray(u.subjects) ? u.subjects : [],
-
-            status: u.status === "ACTIVE" ? "Active" : "Inactive",
-          })
-        );
-
-        setUsers(mapped);
-      } catch (err) {
-        console.error(err);
-        setUsers([]);
-      } finally {
-        setLoading(false);
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-account-menu]")) {
+        setOpenMenuId(null);
       }
     };
 
-    fetchUsers();
-  }, []);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenMenuId(null);
+      }
+    };
 
-  const handleCreateAccount = () => setIsOpen((s) => !s);
+    if (openMenuId) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
+
+  const users: UserAccount[] = useMemo(() => {
+    return (rawUsers ?? []).map((u: any) => ({
+      id: String(u.id),
+      firstname: u.first_name ?? "",
+      lastname: u.last_name ?? "",
+      email: u.email ?? "",
+      role: u.role,
+      gradeLevel: u.student_profile?.grade_level ?? undefined,
+      gender: u.student_profile?.gender ?? undefined,
+      birthdate: u.student_profile?.birthdate ?? undefined,
+      age: u.student_profile?.age ?? undefined,
+      subjects: Array.isArray(u.subjects) ? u.subjects : [],
+      status: u.status === "ACTIVE" ? "Active" : "Inactive",
+    }));
+  }, [rawUsers]);
+
+  const handleCreateAccount = () => {
+    if (activeTab === "teacher") {
+      navigate("/admin/accounts/create/teacher", { state: { activeTab: "teacher" } });
+    } else if (activeTab === "admin") {
+      navigate("/admin/accounts/create/admin", { state: { activeTab: "admin" } });
+    } else {
+      navigate("/admin/accounts/create/student", { state: { activeTab: "student" } });
+    }
+  };
+
+  const createButtonLabel =
+    activeTab === "student"
+      ? "Add Student"
+      : activeTab === "teacher"
+      ? "Add Teacher"
+      : "Add Admin";
 
   // ✅ Grade buttons available (Students only)
   const availableGrades = useMemo(() => {
@@ -182,51 +198,31 @@ const AccountListPage: React.FC = () => {
   // --- Actions ---
   const handleToggleStatus = async (user: UserAccount) => {
     try {
-      const token = localStorage.getItem("access");
       const newStatus = user.status === "Active" ? "INACTIVE" : "ACTIVE";
-
-      const res = await fetch(`http://127.0.0.1:8000/api/user/${user.id}/`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
+      await updateMutation.mutateAsync({
+        userId: user.id,
+        payload: { status: newStatus },
       });
-
-      if (!res.ok) throw new Error("Failed to update status");
-
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === user.id
-            ? { ...u, status: newStatus === "ACTIVE" ? "Active" : "Inactive" }
-            : u
-        )
-      );
-
       setOpenMenuId(null);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Failed to toggle status:", err);
+      alert(err.message || "Failed to update account status. Please try again.");
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure?")) return;
+  const handleDelete = async (user: UserAccount) => {
+    const roleLabel = user.role.toLowerCase();
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${roleLabel} account "${user.firstname} ${user.lastname}" (${user.email})? This action cannot be undone.`
+    );
+    if (!confirmed) return;
 
     try {
-      const token = localStorage.getItem("access");
-
-      const res = await fetch(`http://127.0.0.1:8000/api/user/${id}/`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to delete user");
-
-      setUsers((prev) => prev.filter((u) => u.id !== id));
+      await deleteMutation.mutateAsync(user.id);
       setOpenMenuId(null);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Failed to delete user:", err);
+      alert(err.message || "Failed to delete account. Please try again.");
     }
   };
 
@@ -243,70 +239,43 @@ const AccountListPage: React.FC = () => {
     if (!window.confirm(`Promote ${user.firstname} ${user.lastname} to ${displayGrade(nextGradeLevel)}?`)) return;
 
     try {
-      const token = localStorage.getItem("access");
-
-      const res = await fetch(`http://127.0.0.1:8000/api/user/${user.id}/`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+      await updateMutation.mutateAsync({
+        userId: user.id,
+        payload: {
           student_profile: { grade_level: nextGradeLevel },
-        }),
+        },
       });
-
-      if (!res.ok) throw new Error("Failed to promote student");
-
-      setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, gradeLevel: nextGradeLevel } : u))
-      );
-
       setOpenMenuId(null);
-    } catch (err) {
-      console.error(err);
-      alert("Promotion failed. Check backend payload format.");
+    } catch (err: any) {
+      console.error("Failed to promote student:", err);
+      alert(err.message || "Failed to promote student. Please try again.");
     }
   };
 
-  // ✅ Bulk promote (filtered grade or all students)
-  const handlePromoteBulk = async () => {
-    if (activeTab !== "student") return;
-
-    const list =
-      activeGrade === "ALL"
-        ? users.filter((u) => u.role === "STUDENT")
-        : users.filter((u) => u.role === "STUDENT" && parseGradeNumber(u.gradeLevel) === activeGrade);
+  // ✅ Bulk promote for active grade
+  const handleBulkPromoteStudents = async () => {
+    const list = users.filter((u) => {
+      if (u.role !== "STUDENT") return false;
+      if (activeGrade === "ALL") return true;
+      return parseGradeNumber(u.gradeLevel) === activeGrade;
+    });
 
     if (list.length === 0) return;
 
     const label = activeGrade === "ALL" ? "ALL students" : `Grade ${activeGrade} students`;
     if (!window.confirm(`Promote ${label} to the next grade level?`)) return;
 
-    const token = localStorage.getItem("access");
-
-    // sequential updates (safer for backend)
     for (const stu of list) {
       const nextGradeLevel = formatNextGradeLevel(stu.gradeLevel);
       if (!nextGradeLevel) continue;
 
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/user/${stu.id}/`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ student_profile: { grade_level: nextGradeLevel } }),
+        await updateMutation.mutateAsync({
+          userId: stu.id,
+          payload: { student_profile: { grade_level: nextGradeLevel } },
         });
-
-        if (!res.ok) continue;
-
-        setUsers((prev) =>
-          prev.map((u) => (u.id === stu.id ? { ...u, gradeLevel: nextGradeLevel } : u))
-        );
       } catch {
-        // ignore single failures, continue others
+        // continue others
       }
     }
 
@@ -317,8 +286,6 @@ const AccountListPage: React.FC = () => {
     e.preventDefault();
     if (!selectedItem) return;
 
-    const token = localStorage.getItem("access");
-
     const payload: any = {
       first_name: selectedItem.firstname,
       last_name: selectedItem.lastname,
@@ -326,268 +293,313 @@ const AccountListPage: React.FC = () => {
     };
 
     if (selectedItem.role === "STUDENT") {
-      payload.student_profile = { grade_level: selectedItem.gradeLevel };
+      let grade = selectedItem.gradeLevel || "GRADE_7";
+      if (!grade.startsWith("GRADE_")) {
+        const num = grade.replace(/\D/g, "");
+        grade = num ? `GRADE_${num}` : "GRADE_7";
+      }
+      payload.student_profile = {
+        grade_level: grade,
+        gender: selectedItem.gender || null,
+        birthdate: selectedItem.birthdate || null,
+      };
     }
 
     if (selectedItem.password?.trim()) {
-      payload.password = selectedItem.password;
+      payload.password = selectedItem.password.trim();
     }
 
-    const res = await fetch(`http://127.0.0.1:8000/api/user/${selectedItem.id}/`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error(err);
-      return;
+    try {
+      await updateMutation.mutateAsync({
+        userId: selectedItem.id,
+        payload,
+      });
+      setIsEditModalOpen(false);
+      setSelectedItem(null);
+    } catch (err: any) {
+      console.error("Failed to update user:", err);
+      alert(err.message || "Failed to save account changes.");
     }
-
-    setUsers((prev) => prev.map((u) => (u.id === selectedItem.id ? selectedItem : u)));
-
-    setIsEditModalOpen(false);
-    setSelectedItem(null);
   };
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 py-4 max-w-8xl mx-auto space-y-5">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900">Account Management</h1>
-          <p className="text-slate-500 text-sm">Manage and monitor all school accounts.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Account Management
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Manage student, teacher, and administrator credentials and permissions
+          </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {activeTab === "student" && (
             <button
-              onClick={handlePromoteBulk}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-2xl font-black text-sm transition-all shadow-sm"
+              onClick={handleBulkPromoteStudents}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
               title="Promote students to next grade level"
             >
-              <ArrowUpRight size={18} />
-              Promote {activeGrade === "ALL" ? "All" : `Grade ${activeGrade}`}
+              <ArrowUpRight size={15} />
+              Promote {activeGrade === "ALL" ? "All Students" : `Grade ${activeGrade}`}
             </button>
           )}
 
           <button
             onClick={handleCreateAccount}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl font-black text-sm transition-all shadow-sm"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors"
           >
-            <UserPlus size={18} /> Create Account
+            <UserPlus size={15} /> {createButtonLabel}
           </button>
-
-          <AccountRole isOpen={isOpen} />
         </div>
       </div>
 
-      {/* Tabs & Search (phone friendly) */}
-      <div className="rounded-3xl border border-slate-200 bg-white shadow-sm p-3 sm:p-4 space-y-3">
-        <div className="flex flex-col gap-3">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+      {/* Tabs & Search */}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Role Tabs */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg overflow-x-auto no-scrollbar">
             <TabButton
               active={activeTab === "student"}
               onClick={() => setActiveTab("student")}
-              icon={<GraduationCap size={16} />}
+              icon={<GraduationCap size={15} />}
               label="Students"
             />
             <TabButton
               active={activeTab === "teacher"}
               onClick={() => setActiveTab("teacher")}
-              icon={<UsersRound size={16} />}
+              icon={<UsersRound size={15} />}
               label="Teachers"
             />
             <TabButton
               active={activeTab === "admin"}
               onClick={() => setActiveTab("admin")}
-              icon={<Settings size={16} />}
+              icon={<Settings size={15} />}
               label="Admins"
             />
           </div>
 
-          {/* ✅ Grade-level navigation (Students only) */}
-          {activeTab === "student" && (
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              <GradeChip
-                active={activeGrade === "ALL"}
-                onClick={() => setActiveGrade("ALL")}
-                label="All"
-              />
-              {availableGrades.map((g) => (
-                <GradeChip
-                  key={g}
-                  active={activeGrade === g}
-                  onClick={() => setActiveGrade(g)}
-                  label={`Grade ${g}`}
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          {/* Search Input */}
+          <div className="relative flex-1 lg:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
-              placeholder={`Search ${activeTab}s...`}
-              className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+              placeholder={`Search ${activeTab}s by name, email, or details...`}
+              className="w-full rounded-lg border border-slate-200 bg-slate-50/50 py-2 pl-9 pr-4 text-xs text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         </div>
+
+        {/* Grade-level navigation (Students only) */}
+        {activeTab === "student" && (
+          <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mr-1">
+              Grade Level:
+            </span>
+            <GradeChip
+              active={activeGrade === "ALL"}
+              onClick={() => setActiveGrade("ALL")}
+              label="All Grades"
+            />
+            {availableGrades.map((g) => (
+              <GradeChip
+                key={g}
+                active={activeGrade === g}
+                onClick={() => setActiveGrade(g)}
+                label={`Grade ${g}`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Desktop table + Mobile cards */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-6 text-center text-slate-500">Loading users...</div>
+          <div className="p-8 text-center text-xs text-slate-400">Loading accounts...</div>
         ) : (
           <>
-            {/* ✅ Desktop/tablet */}
+            {/* Desktop / Tablet Table */}
             <div className="hidden md:block">
-              <div className="max-h-[70vh] overflow-auto">
-                <table className="w-full text-left  border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+              <div className="max-h-[70vh] overflow-auto min-h-[320px]">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50/80 border-b border-slate-200 sticky top-0 z-10">
                     <tr>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">
+                      <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         Name
                       </th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">
+                      <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         Email
                       </th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">
+                      <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         {activeTab === "teacher"
-                          ? "Subjects"
+                          ? "Assigned Subjects"
                           : activeTab === "student"
                           ? "Grade Level"
                           : "Role"}
                       </th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">
+                      <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         Status
                       </th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right">
+                      <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">
                         Actions
                       </th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100">
-                    {currentList.map((user) => (
-                      <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-slate-900">
-                          {user.firstname} {user.lastname}
-                        </td>
-
-                        <td className="px-6 py-4 text-slate-600">
-                          <span className="inline-flex items-center gap-2">
-                            <Mail size={14} className="text-slate-400" />
-                            {user.email}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 text-slate-600">
-                          {user.role === "TEACHER" ? (
-                            user.subjects && user.subjects.length > 0 ? (
-                              <div className="flex flex-wrap gap-2">
-                                {user.subjects.map((s) => (
-                                  <span
-                                    key={s.id}
-                                    className="px-2 py-1 rounded-full text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-100"
-                                  >
-                                    {s.name}
-                                  </span>
-                                ))}
+                    {currentList.map((user, index) => {
+                      const initials =
+                        (user.firstname?.charAt(0) || "") + (user.lastname?.charAt(0) || "");
+                      return (
+                        <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="px-6 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700 border border-slate-200">
+                                {initials || "U"}
                               </div>
-                            ) : (
-                              <span className="text-slate-400">No Subject</span>
-                            )
-                          ) : user.role === "STUDENT" ? (
-                            displayGrade(user.gradeLevel)
-                          ) : (
-                            "System Admin"
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <span
-                            className={[
-                              "px-2 py-1 rounded-full text-xs font-black",
-                              user.status === "Active"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-rose-100 text-rose-700",
-                            ].join(" ")}
-                          >
-                            {user.status}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 text-right relative">
-                          <button
-                            onClick={() => setOpenMenuId(openMenuId === user.id ? null : user.id)}
-                            className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors"
-                            aria-label="Open actions"
-                          >
-                            <MoreVertical size={18} />
-                          </button>
-
-                          {openMenuId === user.id && (
-                            <div>
-                              <div
-                                className="fixed inset-0 z-10"
-                                onClick={() => setOpenMenuId(null)}
-                              />
-                              <div className="absolute right-4 mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 py-1">
-                                <button
-                                  onClick={() => handleToggleStatus(user)}
-                                  className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-2 font-semibold"
-                                >
-                                  Set as {user.status === "Active" ? "Inactive" : "Active"}
-                                </button>
-
-                                {/* ✅ Promote (Students only) */}
-                                {user.role === "STUDENT" && (
-                                  <button
-                                    onClick={() => handlePromoteStudent(user)}
-                                    className="w-full text-left px-4 py-2.5 text-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 font-semibold"
-                                  >
-                                    Promote to next grade <ChevronRight size={16} />
-                                  </button>
-                                )}
-
-                                <button
-                                  onClick={() => {
-                                    setSelectedItem(user);
-                                    setIsEditModalOpen(true);
-                                    setOpenMenuId(null);
-                                  }}
-                                  className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-2 font-semibold"
-                                >
-                                  Edit Account
-                                </button>
-
-                                <button
-                                  onClick={() => handleDelete(user.id)}
-                                  className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-semibold"
-                                >
-                                  <Trash2 size={14} />
-                                  Delete Account
-                                </button>
-                              </div>
+                              <span className="font-semibold text-sm text-slate-900">
+                                {user.firstname} {user.lastname}
+                              </span>
                             </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+
+                          <td className="px-6 py-3.5 text-xs text-slate-600">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Mail size={13} className="text-slate-400" />
+                              {user.email}
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-3.5 text-xs text-slate-600">
+                            {user.role === "TEACHER" ? (
+                              user.subjects && user.subjects.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {user.subjects.map((s) => (
+                                    <span
+                                      key={s.id}
+                                      className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100"
+                                    >
+                                      {s.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 italic">No assigned subjects</span>
+                              )
+                            ) : user.role === "STUDENT" ? (
+                              <span className="font-medium text-slate-800">
+                                {displayGrade(user.gradeLevel)}
+                              </span>
+                            ) : (
+                              <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700 border border-purple-100">
+                                System Administrator
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-6 py-3.5">
+                            <span
+                              className={[
+                                "px-2 py-0.5 rounded-full text-[11px] font-semibold border",
+                                user.status === "Active"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-slate-100 text-slate-600 border-slate-200",
+                              ].join(" ")}
+                            >
+                              {user.status}
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-3.5 text-right">
+                            <div className="relative inline-block text-left" data-account-menu>
+                              <button
+                                onClick={() => setOpenMenuId(openMenuId === user.id ? null : user.id)}
+                                className={`p-1.5 rounded-lg border transition-colors ${
+                                  openMenuId === user.id
+                                    ? "border-slate-300 bg-slate-100 text-slate-800 shadow-inner"
+                                    : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                }`}
+                                aria-label="Open actions"
+                              >
+                                <MoreVertical size={16} />
+                              </button>
+
+                              {openMenuId === user.id && (
+                                <div
+                                  className={`absolute right-0 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-30 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 ${
+                                    index >= currentList.length - 2 && currentList.length > 2
+                                      ? "bottom-full mb-1.5 origin-bottom-right"
+                                      : "top-full mt-1.5 origin-top-right"
+                                  }`}
+                                >
+                                  <button
+                                    onClick={() => {
+                                      setSelectedItem(user);
+                                      setIsEditModalOpen(true);
+                                      setOpenMenuId(null);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
+                                  >
+                                    <Edit3 size={14} className="text-indigo-600 shrink-0" />
+                                    <span>Edit Account Details</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleToggleStatus(user)}
+                                    className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
+                                  >
+                                    {user.status === "Active" ? (
+                                      <>
+                                        <UserX size={14} className="text-amber-600 shrink-0" />
+                                        <span>Set as Inactive</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <UserCheck size={14} className="text-emerald-600 shrink-0" />
+                                        <span>Set as Active</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  {user.role === "STUDENT" && (
+                                    <button
+                                      onClick={() => handlePromoteStudent(user)}
+                                      className="w-full text-left px-3.5 py-2 text-emerald-700 hover:bg-emerald-50 flex items-center justify-between font-medium transition-colors"
+                                    >
+                                      <span className="flex items-center gap-2.5">
+                                        <ArrowUpRight size={14} className="text-emerald-600 shrink-0" />
+                                        <span>Promote to next grade</span>
+                                      </span>
+                                      <ChevronRight size={13} className="text-emerald-400" />
+                                    </button>
+                                  )}
+
+                                  <div className="my-1 border-t border-slate-100" />
+
+                                  <button
+                                    onClick={() => handleDelete(user)}
+                                    className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 font-medium transition-colors"
+                                  >
+                                    <Trash2 size={14} className="text-rose-600 shrink-0" />
+                                    <span>Delete Account</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
 
                     {!loading && currentList.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                          No accounts found.
+                        <td colSpan={5} className="px-6 py-12 text-center text-xs text-slate-400">
+                          No matching accounts found.
                         </td>
                       </tr>
                     )}
@@ -596,23 +608,23 @@ const AccountListPage: React.FC = () => {
               </div>
             </div>
 
-            {/* ✅ Mobile cards */}
+            {/* Mobile cards */}
             <div className="md:hidden">
-              <div className="max-h-[72vh] overflow-auto p-3 space-y-3">
+              <div className="max-h-[72vh] overflow-auto p-3 space-y-2.5">
                 {currentList.length === 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-600 text-center">
-                    No accounts found.
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-slate-400 text-center text-xs">
+                    No matching accounts found.
                   </div>
                 ) : (
                   currentList.map((user) => (
-                    <div key={user.id} className="rounded-3xl border border-slate-200 bg-white p-4">
+                    <div key={user.id} className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-sm" data-account-menu>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-black text-slate-900 truncate">
+                          <div className="font-bold text-sm text-slate-900 truncate">
                             {user.firstname} {user.lastname}
                           </div>
-                          <div className="mt-1 text-sm text-slate-600 flex items-center gap-2 min-w-0">
-                            <Mail size={14} className="text-slate-400 shrink-0" />
+                          <div className="mt-1 text-xs text-slate-500 flex items-center gap-1.5 min-w-0">
+                            <Mail size={12} className="text-slate-400 shrink-0" />
                             <span className="truncate">{user.email}</span>
                           </div>
                         </div>
@@ -620,10 +632,10 @@ const AccountListPage: React.FC = () => {
                         <div className="flex items-center gap-2 shrink-0">
                           <span
                             className={[
-                              "px-2 py-1 rounded-full text-[11px] font-black",
+                              "px-2 py-0.5 rounded-full text-[10px] font-semibold border",
                               user.status === "Active"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-rose-100 text-rose-700",
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-slate-100 text-slate-600 border-slate-200",
                             ].join(" ")}
                           >
                             {user.status}
@@ -631,82 +643,94 @@ const AccountListPage: React.FC = () => {
 
                           <button
                             onClick={() => setOpenMenuId(openMenuId === user.id ? null : user.id)}
-                            className="p-2 rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            className={`p-1.5 rounded-lg border transition-colors ${
+                              openMenuId === user.id
+                                ? "border-slate-300 bg-slate-100 text-slate-800 shadow-inner"
+                                : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                            }`}
                             aria-label="Open actions"
                           >
-                            <MoreVertical size={18} />
+                            <MoreVertical size={16} />
                           </button>
                         </div>
                       </div>
 
-                      {/* role-specific line */}
-                      <div className="mt-3 text-sm text-slate-700">
+                      <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-xs text-slate-600">
                         {user.role === "TEACHER" ? (
                           user.subjects && user.subjects.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                              {user.subjects.slice(0, 4).map((s) => (
+                            <div className="flex flex-wrap gap-1.5">
+                              {user.subjects.map((s) => (
                                 <span
                                   key={s.id}
-                                  className="px-2 py-1 rounded-full text-[11px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100"
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100"
                                 >
                                   {s.name}
                                 </span>
                               ))}
-                              {user.subjects.length > 4 ? (
-                                <span className="px-2 py-1 rounded-full text-[11px] font-black bg-slate-100 text-slate-700">
-                                  +{user.subjects.length - 4}
-                                </span>
-                              ) : null}
                             </div>
                           ) : (
-                            <span className="text-slate-500">No Subject</span>
+                            <span className="text-slate-400 italic">No assigned subjects</span>
                           )
                         ) : user.role === "STUDENT" ? (
                           <span>
-                            <span className="text-slate-500">Grade Level: </span>
-                            <span className="font-bold">{displayGrade(user.gradeLevel)}</span>
+                            <span className="text-slate-400">Grade Level: </span>
+                            <span className="font-semibold text-slate-800">{displayGrade(user.gradeLevel)}</span>
                           </span>
                         ) : (
-                          <span className="text-slate-500">System Admin</span>
+                          <span className="text-purple-600 font-medium">System Administrator</span>
                         )}
                       </div>
 
-                      {/* Actions menu (mobile: full width dropdown) */}
                       {openMenuId === user.id && (
-                        <div className="mt-3 rounded-2xl border border-slate-200 overflow-hidden">
-                          <button
-                            onClick={() => handleToggleStatus(user)}
-                            className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-indigo-50"
-                          >
-                            Set as {user.status === "Active" ? "Inactive" : "Active"}
-                          </button>
-
-                          {/* ✅ Promote (Students only) */}
-                          {user.role === "STUDENT" && (
-                            <button
-                              onClick={() => handlePromoteStudent(user)}
-                              className="w-full text-left px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 border-t border-slate-200"
-                            >
-                              Promote to next grade
-                            </button>
-                          )}
-
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 divide-y divide-slate-200/70 overflow-hidden text-xs">
                           <button
                             onClick={() => {
                               setSelectedItem(user);
                               setIsEditModalOpen(true);
                               setOpenMenuId(null);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-indigo-50 border-t border-slate-200"
+                            className="w-full text-left px-3.5 py-2.5 text-slate-700 hover:bg-white flex items-center gap-2.5 font-medium transition-colors"
                           >
-                            Edit Account
+                            <Edit3 size={14} className="text-indigo-600 shrink-0" />
+                            <span>Edit Account Details</span>
                           </button>
 
                           <button
-                            onClick={() => handleDelete(user.id)}
-                            className="w-full text-left px-4 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50 border-t border-slate-200"
+                            onClick={() => handleToggleStatus(user)}
+                            className="w-full text-left px-3.5 py-2.5 text-slate-700 hover:bg-white flex items-center gap-2.5 font-medium transition-colors"
                           >
-                            Delete Account
+                            {user.status === "Active" ? (
+                              <>
+                                <UserX size={14} className="text-amber-600 shrink-0" />
+                                <span>Set as Inactive</span>
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck size={14} className="text-emerald-600 shrink-0" />
+                                <span>Set as Active</span>
+                              </>
+                            )}
+                          </button>
+
+                          {user.role === "STUDENT" && (
+                            <button
+                              onClick={() => handlePromoteStudent(user)}
+                              className="w-full text-left px-3.5 py-2.5 text-emerald-700 hover:bg-white flex items-center justify-between font-medium transition-colors"
+                            >
+                              <span className="flex items-center gap-2.5">
+                                <ArrowUpRight size={14} className="text-emerald-600 shrink-0" />
+                                <span>Promote to next grade</span>
+                              </span>
+                              <ChevronRight size={13} className="text-emerald-400" />
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handleDelete(user)}
+                            className="w-full text-left px-3.5 py-2.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 font-medium transition-colors"
+                          >
+                            <Trash2 size={14} className="text-rose-600 shrink-0" />
+                            <span>Delete Account</span>
                           </button>
                         </div>
                       )}
@@ -726,36 +750,37 @@ const AccountListPage: React.FC = () => {
         onClose={() => setIsEditModalOpen(false)}
         onSave={handleSaveEdit}
         setSelectedItem={setSelectedItem}
+        isSaving={updateMutation.isPending}
       />
     </div>
   );
 };
 
-// --- TabButton Subcomponent (mobile-first) ---
+// --- TabButton Subcomponent ---
 const TabButton = ({ active, onClick, label, icon }: any) => (
   <button
     onClick={onClick}
     className={[
-      "shrink-0 inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition border",
+      "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
       active
-        ? "bg-slate-900 text-white border-slate-900"
-        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
+        ? "bg-white text-slate-900 shadow-sm"
+        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50",
     ].join(" ")}
   >
     {icon}
-    <span className="uppercase tracking-wider text-[12px]">{label}</span>
+    <span>{label}</span>
   </button>
 );
 
-// ✅ Grade chip (Students tab)
+// Grade chip (Students tab)
 const GradeChip = ({ active, onClick, label }: any) => (
   <button
     onClick={onClick}
     className={[
-      "shrink-0 inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition border",
+      "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium transition-all border",
       active
-        ? "bg-indigo-600 text-white border-indigo-600"
-        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
+        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50",
     ].join(" ")}
   >
     {label}

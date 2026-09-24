@@ -1,62 +1,63 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import SideBar from "./Sidebar";
-import Topbar from "./Header";
+import SideBar from "./sidebar/Sidebar";
+import Topbar from "./Topbar";
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
-  // 1. Properly type the isDesktop state
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
-    typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : true
+    typeof window !== "undefined"
+      ? window.matchMedia("(min-width: 1024px)").matches
+      : true
   );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const mql = window.matchMedia("(min-width: 1024px)");
-    
-    // 2. Type the event as MediaQueryListEvent
+
     const handler = (ev: MediaQueryListEvent) => {
       setIsDesktop(ev.matches);
-      if (ev.matches) setSidebarOpen(false); // Close mobile menu if window is resized to desktop
+
+      if (ev.matches) {
+        setSidebarOpen(false);
+      }
     };
 
     mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
+
+    return () => {
+      mql.removeEventListener("change", handler);
+    };
   }, []);
 
-  // Close sidebar drawer on route changes (mobile UX)
+  // close drawer after navigation on mobile
   useEffect(() => {
-    if (!isDesktop) setSidebarOpen(false);
+    if (!isDesktop) {
+      setSidebarOpen(false);
+    }
   }, [location.pathname, isDesktop]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      {/* SIDEBAR 
-          Passes down the states we calculated 
-      */}
+    <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased">
       <SideBar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        onOpen={() => setSidebarOpen(true)}
         isDesktop={isDesktop}
       />
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar
-          onOpenSidebar={() => setSidebarOpen(true)}
+          onOpenMobileSidebar={() => setSidebarOpen(true)}
           isDesktop={isDesktop}
         />
 
-        {/* Main Scrolling Area 
-            h-full and overflow-y-auto ensure only the content scrolls, 
-            keeping the Sidebar and Topbar fixed.
-        */}
-        <main className="flex-1 overflow-y-auto relative focus:outline-none">
-          <div className="p-2">
-            <Outlet /> 
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50/60 p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <Outlet />
           </div>
         </main>
       </div>

@@ -19,3 +19,4 @@ export interface SubjectOffering {
 }
 
 export default function SubjectOffering() {}
+

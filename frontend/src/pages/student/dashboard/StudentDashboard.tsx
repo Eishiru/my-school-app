@@ -1,45 +1,31 @@
-'use client';
+import { useStudentProfile } from '../../../hooks/useStudentProfile';
+import { useStudentSubjects } from '../../../hooks/useStudentSubjects';
+import { useStudentQuizzes } from '../../../hooks/useStudentQuizzes';
+import { useStudentQuizAttempts } from '../../../hooks/useStudentSemesterGrades';
+import type { StudentQuiz, QuizStatus } from '../../../types/studentTypes';
 
-import { useEffect, useMemo, useState } from 'react';
+import StatCard from '../../../components/studentcomponents/StatCard';
+
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Clock,
   ChevronRight,
-  ClipboardList,
-  GraduationCap,
-  Layers,
-  Search,
+  BookOpen,
+  CheckCircle2,
+  Award,
+  AlertCircle,
+  Calendar,
 } from 'lucide-react';
 
-// ---------------- Types ----------------
-
-type SubjectOfferingCard = {
-  id: number;
-  subject_name: string;
-  teacher_name?: string;
-  progress?: number; // 0..100
-  average?: number;  // 0..100
-  final_grade?: number | null;
-};
-
-type QuizStatus = 'DRAFT' | 'SCHEDULED' | 'OPEN' | 'CLOSED';
-
-type Quiz = {
-  id: number;
-  title: string;
-  open_time?: string | null;
-  close_time?: string | null;
-  status?: QuizStatus;
-  SubjectOffering?: number;
-  subject_name?: string; // StudentQuizSerializer returns this
-  allow_multiple_attempts?: boolean;
-  user_attempts?: number;
-  is_open?: boolean;
-  is_upcoming?: boolean;
-  is_closed?: boolean;
-};
-
 // ---------------- Helpers ----------------
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
 function safeNumber(v: any, fallback = 0) {
   const n = typeof v === 'number' ? v : Number(v);
@@ -53,8 +39,7 @@ function formatDate(iso?: string | null) {
   return d.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
 }
 
-
-function dueIso(q: Quiz) {
+function dueIso(q: StudentQuiz) {
   return q.close_time ?? q.open_time ?? null;
 }
 
@@ -69,8 +54,8 @@ function urgencyFromDate(iso?: string | null) {
   return 'low' as const;
 }
 
-function canTakeQuiz(q: Quiz) {
-  const isOpen = q.is_open ?? q.status === 'OPEN';
+function canTakeQuiz(q: StudentQuiz) {
+  const isOpen = q.is_open;
   if (!isOpen) return false;
 
   const allow = q.allow_multiple_attempts ?? true;
@@ -84,137 +69,87 @@ function StatusPill({ status }: { status?: QuizStatus }) {
   const s = status ?? 'SCHEDULED';
   const cls =
     s === 'OPEN'
-      ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
       : s === 'CLOSED'
-      ? 'bg-slate-50 border-slate-200 text-slate-500'
+      ? 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'
       : s === 'SCHEDULED'
-      ? 'bg-amber-50 border-amber-100 text-amber-700'
-      : 'bg-slate-50 border-slate-200 text-slate-500';
+      ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20'
+      : 'bg-slate-50 text-slate-600 ring-1 ring-slate-200';
 
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${cls}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${cls}`}>
       {s}
     </span>
-  );
-}
-
-const StatCard = ({
-  label,
-  value,
-  hint,
-  Icon,
-}: {
-  label: string;
-  value: string | number;
-  hint?: string;
-  Icon: any;
-}) => (
-  <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-start justify-between">
-      <div>
-        <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">{label}</p>
-        <div className="text-3xl font-black text-slate-900">{value}</div>
-        {hint ? <div className="text-xs text-slate-500 mt-2">{hint}</div> : null}
-      </div>
-      <div className="p-2.5 rounded-xl bg-slate-50 text-slate-500">
-        <Icon size={18} />
-      </div>
-    </div>
-  </div>
-);
-
-function ProgressBar({ value }: { value: number }) {
-  const v = Math.max(0, Math.min(100, value));
-  return (
-    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-      <div className="h-2 rounded-full bg-indigo-500" style={{ width: `${v}%` }} />
-    </div>
   );
 }
 
 // ---------------- Component ----------------
 
 export default function StudentDashboard() {
-  const [offerings, setOfferings] = useState<SubjectOfferingCard[]>([]);
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const {
+    data: student,
+    isLoading,
+    error,
+  } = useStudentProfile();
 
-  // UI state
-  const [qSearch, setQSearch] = useState('');
+  const {
+    data: offerings = [],
+    isLoading: subjectsLoading,
+    error: subjectsError,
+  } = useStudentSubjects();
 
-  const token = localStorage.getItem('access');
-  const base = 'http://127.0.0.1:8000/api';
+  const {
+    data: quizzes = [],
+    isLoading: quizzesLoading,
+    error: quizzesError,
+  } = useStudentQuizzes();
 
-  useEffect(() => {
-    const run = async () => {
-      if (!token) {
-        setErrorMsg('Not authenticated. Please log in again.');
-        setLoading(false);
-        return;
-      }
+  const {
+    data: quizAttempts = [],
+  } = useStudentQuizAttempts();
 
-      try {
-        setLoading(true);
-        setErrorMsg(null);
+  const [selectedSemester, setSelectedSemester] = useState(1);
 
-        const [oRes, qRes] = await Promise.all([
-          fetch(`${base}/student/subject-offerings/`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${base}/student/quizzes/`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
+  const attemptsByQuizId = useMemo(() => {
+    const map = new Map<number, (typeof quizAttempts)[0]>();
+    for (const att of quizAttempts) {
+      map.set(att.quiz, att);
+    }
+    return map;
+  }, [quizAttempts]);
 
-        if (!oRes.ok) {
-          setOfferings([]);
-          setErrorMsg('Failed to load subjects.');
-        } else {
-          const oData = (await oRes.json()) as SubjectOfferingCard[];
-          setOfferings(Array.isArray(oData) ? oData : []);
-        }
+  const getSubjectSemesterGrade = (o: any, sem: number): number | null => {
+    const semKey = `SEMESTER_${sem}`;
+    const altKey = `SEM${sem}`;
+    const val = o.semesters?.[semKey] ?? o.semesters?.[altKey] ?? (o.quarters as any)?.[sem];
+    if (typeof val === 'number' && !Number.isNaN(val)) return val;
+    if (sem === 1 && typeof o.average === 'number' && !Number.isNaN(o.average)) return o.average;
+    return null;
+  };
 
-        if (!qRes.ok) {
-          setQuizzes([]);
-        } else {
-          const qData = (await qRes.json()) as Quiz[];
-          setQuizzes(Array.isArray(qData) ? qData : []);
-        }
-      } catch (e) {
-        console.error(e);
-        setErrorMsg('Network error while loading dashboard.');
-        setOfferings([]);
-        setQuizzes([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    run();
-  }, [token]);
-
-  // ✅ Upcoming: OPEN + SCHEDULED, sorted by urgency + due time
-  const isOpen = (q: Quiz) => (q.is_open === true) || q.status === 'OPEN';
-  const isUpcoming = (q: Quiz) => (q.is_upcoming === true) || q.status === 'SCHEDULED';
+  const isOpen = (q: StudentQuiz) => q.is_open === true;
+  const isUpcoming = (q: StudentQuiz) => q.is_upcoming === true;
 
   const upcoming = useMemo(() => {
-    const query = qSearch.trim().toLowerCase();
-
     const items = quizzes
       .filter((q) => isOpen(q) || isUpcoming(q))
-      .filter((q) => {
-        if (!query) return true;
-        const hay = `${q.title ?? ''} ${q.subject_name ?? ''}`.toLowerCase();
-        return hay.includes(query);
-      })
       .map((q) => {
-        const status: QuizStatus =
-          isOpen(q) ? 'OPEN' : isUpcoming(q) ? 'SCHEDULED' : (q.status as QuizStatus) ?? 'SCHEDULED';
-
+        const status: QuizStatus = q.is_open
+          ? 'OPEN'
+          : q.is_upcoming
+          ? 'SCHEDULED'
+          : q.is_closed
+          ? 'CLOSED'
+          : 'SCHEDULED';
         const iso = dueIso(q);
         const urgency = urgencyFromDate(iso);
-        const takeable = canTakeQuiz(q);
+        const attempt = attemptsByQuizId.get(q.id);
+        const isCompleted =
+          !!attempt &&
+          (attempt.status === 'SUBMITTED' ||
+            attempt.status === 'GRADED' ||
+            (attempt.score !== null && attempt.score !== undefined));
+        const takeable = !isCompleted && canTakeQuiz(q);
 
         return {
           key: `Q-${q.id}`,
@@ -225,221 +160,365 @@ export default function StudentDashboard() {
           status,
           quizId: q.id,
           takeable,
+          isCompleted,
+          attempt,
           link: takeable ? `/student/activities/${q.id}/take` : `/student/activities`,
         };
       });
 
     const rank = { high: 0, medium: 1, low: 2 } as const;
-    items.sort((a, b) => rank[a.urgency] - rank[b.urgency]);
+    items.sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) {
+        return a.isCompleted ? 1 : -1;
+      }
+      return rank[a.urgency] - rank[b.urgency];
+    });
 
     return items.slice(0, 8);
-  }, [quizzes, qSearch]);
+  }, [quizzes, attemptsByQuizId]);
 
   const stats = useMemo(() => {
-    const avgs = offerings
-      .map((o) => o.average)
-      .filter((v) => typeof v === 'number')
-      .map((v) => safeNumber(v));
+    const semGrades = offerings
+      .map((o) => getSubjectSemesterGrade(o, selectedSemester))
+      .filter((v): v is number => v !== null);
 
-    const overallAvg = avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : null;
+    const overallAvg = semGrades.length
+      ? semGrades.reduce((a, b) => a + b, 0) / semGrades.length
+      : null;
 
-    const openCount = quizzes.filter((q) => q.status === 'OPEN').length;
-    const scheduledCount = quizzes.filter((q) => q.status === 'SCHEDULED').length;
+    const openCount = quizzes.filter((q) => q.is_open).length;
+    const scheduledCount = quizzes.filter((q) => q.is_upcoming).length;
+
+    let completedCount = 0;
+    for (const q of quizzes) {
+      const att = attemptsByQuizId.get(q.id);
+      if (att && (att.status === 'SUBMITTED' || att.status === 'GRADED' || att.score !== null)) {
+        completedCount++;
+      }
+    }
+
+    const pendingCount = Math.max(0, openCount - completedCount);
 
     return {
       subjectCount: offerings.length,
-      overallAvg: overallAvg != null ? overallAvg.toFixed(1) : '—',
+      overallAvg,
       openScheduled: openCount + scheduledCount,
       openCount,
       scheduledCount,
+      completedCount,
+      pendingCount,
     };
-  }, [offerings, quizzes]);
+  }, [offerings, quizzes, selectedSemester, attemptsByQuizId]);
 
-  if (loading) {
+  if (isLoading || subjectsLoading || quizzesLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <p className="text-slate-600 font-bold">Loading dashboard…</p>
+      <div className="flex h-72 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-500">Loading student dashboard...</p>
+        </div>
       </div>
     );
   }
 
-  if (errorMsg) {
+  if (error || subjectsError || quizzesError) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <h1 className="text-2xl font-black">Student Dashboard</h1>
-        <p className="text-rose-600 font-bold mt-2">{errorMsg}</p>
+      <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-6 text-center">
+        <AlertCircle className="mx-auto h-8 w-8 text-rose-500" />
+        <h3 className="mt-2 text-sm font-semibold text-rose-900">Failed to load dashboard data</h3>
+        <p className="mt-1 text-xs text-rose-600">
+          We encountered an issue retrieving your student record. Please refresh to try again.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <main className="p-4 md:p-6 mx-auto space-y-6">
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight">Student Dashboard</h1>
-            <p className="text-slate-500 font-medium mt-1">
-              You have <span className="text-indigo-600 font-black">{upcoming.length}</span> upcoming activities.
-            </p>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              {getGreeting()}
+            </span>
           </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            {student?.first_name} {student?.last_name}!
+          </h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+            <span>{student?.grade_level || 'Grade Level'}</span>
+            <span>•</span>
+            <span>Section {student?.section_name || student?.section || 'General'}</span>
+            <span>•</span>
+            <span className="inline-flex items-center gap-1 text-slate-600">
+              <Calendar size={12} /> A.Y. {student?.academic_year || '2024–2025'}
+            </span>
+          </div>
+        </div>
 
+        {/* Semester Selector */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <label htmlFor="semester" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Semester:
+          </label>
+          <select
+            id="semester"
+            value={selectedSemester}
+            onChange={(e) => setSelectedSemester(Number(e.target.value))}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-xs outline-none transition-colors hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          >
+            <option value={1}>Semester 1</option>
+            <option value={2}>Semester 2</option>
+            <option value={3}>Semester 3</option>
+          </select>
+        </div>
+      </div>
 
-        </header>
-
-        {/* Stats */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <StatCard label="Overall Average" value={stats.overallAvg} hint="Across current subjects" Icon={GraduationCap} />
-          <StatCard label="Subjects" value={stats.subjectCount} hint="Enrolled this term" Icon={Layers} />
-          <StatCard
-            label="Upcoming Activities"
-            value={stats.openScheduled}
-            hint={`${stats.openCount} open • ${stats.scheduledCount} scheduled`}
-            Icon={ClipboardList}
-          />
-        </section>
-
-        {/* Main */}
-        <section className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Subjects */}
-          <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">My Subjects</h2>
-              <Link to="/student/subject" className="text-xs font-black text-indigo-600 hover:underline">
-                View all
-              </Link>
+      {/* 4 Unified Stat Cards */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {/* Stat 1: Semester Average */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Sem {selectedSemester} Average</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+              <Award size={18} />
             </div>
-
-            {offerings.length === 0 ? (
-              <div className="text-slate-600 font-semibold">No subjects found.</div>
+          </div>
+          <div className="mt-3">
+            <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+              {stats.overallAvg !== null ? stats.overallAvg.toFixed(1) : '—'}
+            </span>
+          </div>
+          <div className="mt-1">
+            {stats.overallAvg !== null && stats.overallAvg >= 75 ? (
+              <span className="text-xs font-medium text-emerald-600">Passing Standing</span>
+            ) : stats.overallAvg !== null ? (
+              <span className="text-xs font-medium text-rose-600">Needs Improvement</span>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {offerings.map((o) => {
-                  const progress = safeNumber(o.progress, 0);
-                  const avg = typeof o.average === 'number' ? o.average.toFixed(1) : '—';
-                  const fg = typeof o.final_grade === 'number' ? o.final_grade.toFixed(1) : '—';
-
-                  return (
-                    <Link
-                      key={o.id}
-                      to={`/student/subject-offering/${o.id}`}
-                      className="group p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all bg-slate-50/30 hover:bg-white"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-black text-slate-900 truncate group-hover:text-indigo-700">
-                            {o.subject_name}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-1 truncate">
-                            Teacher: <span className="font-semibold">{o.teacher_name || 'N/A'}</span>
-                          </div>
-                        </div>
-                        <ChevronRight className="text-slate-300 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" size={18} />
-                      </div>
-
-                      <div className="mt-4 space-y-2">
-                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
-                          <span>Progress</span>
-                          <span className="text-slate-800">{progress}%</span>
-                        </div>
-                        <ProgressBar value={progress} />
-
-                        <div className="grid grid-cols-2 gap-2 mt-3">
-                          <div className="p-3 rounded-xl bg-white border border-slate-100">
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Average</div>
-                            <div className="text-lg font-black text-slate-900 mt-1">{avg}%</div>
-                          </div>
-                          <div className="p-3 rounded-xl bg-white border border-slate-100">
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Final</div>
-                            <div className="text-lg font-black text-slate-900 mt-1">{fg}%</div>
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
+              <span className="text-xs text-slate-400">No grades recorded</span>
             )}
           </div>
+        </div>
 
-          {/* ✅ Upcoming Activities (clickable -> take if OPEN, else -> list) */}
-          <aside className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <div className="flex-1 max-h-[520px] overflow-y-auto pr-2 space-y-3 items-center justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">Upcoming Activities</h2>
-                <div className="text-xs text-slate-500 mt-1">Open + scheduled quizzes</div>
-              </div>
-              <Link to={`/student/activities/`} className="text-xs font-black text-indigo-600 hover:underline">
-                View all
-              </Link>
+        {/* Stat 2: Enrolled Subjects */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Enrolled Subjects</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+              <BookOpen size={18} />
             </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+              {stats.subjectCount}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">Active enrollments</div>
+        </div>
 
-            {/* search */}
-            <div className="mb-4">
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
-                <Search size={16} className="text-slate-400" />
-                <input
-                  value={qSearch}
-                  onChange={(e) => setQSearch(e.target.value)}
-                  placeholder="Search upcoming…"
-                  className="w-full bg-transparent outline-none text-sm font-semibold text-slate-800 placeholder:text-slate-400"
-                />
-              </div>
+        {/* Stat 3: Pending Activities */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Pending Activities</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+              <Clock size={18} />
             </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+              {stats.pendingCount}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">Quizzes to complete</div>
+        </div>
 
-            {upcoming.length === 0 ? (
-              <div className="text-slate-600 font-semibold">No upcoming quizzes right now.</div>
-            ) : (
-              <div className="space-y-3">
-                {upcoming.map((t) => (
+        {/* Stat 4: Completed Activities */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-slate-300">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Completed Quizzes</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+              <CheckCircle2 size={18} />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-mono text-2xl font-bold tracking-tight text-slate-900">
+              {stats.completedCount}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">Submitted attempts</div>
+        </div>
+      </div>
+
+      {/* Main Section: Circular Grade Gauge & My Subjects */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        {/* Radial Grade Gauge Card */}
+        <StatCard
+          label={`Semester ${selectedSemester} Average`}
+          value={stats.overallAvg}
+        />
+
+        {/* My Subjects Card */}
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs xl:col-span-2">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Enrolled Subjects</h2>
+              <p className="text-xs text-slate-500">Quick access to learning resources and grades</p>
+            </div>
+            <Link
+              to="/student/subject"
+              className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+            >
+              View all ({offerings.length})
+            </Link>
+          </div>
+
+          {offerings.length === 0 ? (
+            <div className="py-12 text-center text-xs font-medium text-slate-400">
+              No subjects enrolled for this academic year.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {offerings.map((o) => {
+                const semGrade = getSubjectSemesterGrade(o, selectedSemester);
+
+                return (
                   <Link
-                    key={t.key}
-                    to={t.link}
-                    className="block group p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all"
-                    title={t.takeable ? 'Take quiz' : 'View in activities'}
+                    key={o.id}
+                    to={`/student/subject-offering/${o.id}`}
+                    className="group flex items-center justify-between gap-4 py-3.5 px-2 rounded-lg hover:bg-slate-50 transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest truncate">
-                          {t.subject}
-                        </div>
-                        <div className="font-black text-slate-900 truncate group-hover:text-indigo-700 mt-1">
-                          {t.title}
-                        </div>
-                        <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1">
-                            <Clock size={14} />
-                            {t.status === 'OPEN' ? 'Closes' : 'Opens'}: {t.dueLabel}
-                          </span>
-                        </div>
-                      </div>
-                      <StatusPill status={t.status} />
+                    {/* Subject Icon / Initials */}
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                      {o.subject_name?.charAt(0).toUpperCase() || '?'}
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between">
-                      <span
-                        className={`text-[11px] font-black px-2.5 py-1 rounded-lg ${
-                          t.urgency === 'high'
-                            ? 'bg-rose-50 text-rose-700'
-                            : t.urgency === 'medium'
-                            ? 'bg-amber-50 text-amber-700'
-                            : 'bg-slate-50 text-slate-600'
-                        }`}
-                      >
-                        {t.takeable ? 'TAKE NOW' : t.urgency.toUpperCase()}
-                      </span>
+                    {/* Subject & Instructor Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-xs text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
+                          {o.subject_name}
+                        </span>
+                        <span className="hidden sm:inline text-xs text-slate-400">•</span>
+                        <span className="hidden sm:inline text-xs text-slate-500 truncate">
+                          {o.teacher_name || 'Unassigned'}
+                        </span>
+                      </div>
+                      <div className="sm:hidden text-[11px] text-slate-500 truncate mt-0.5">
+                        {o.teacher_name || 'Unassigned'}
+                      </div>
+                    </div>
+
+                    {/* Grade Chip & Chevron */}
+                    <div className="flex shrink-0 items-center gap-2.5">
+                      {semGrade !== null ? (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md font-mono text-xs font-semibold ${
+                            semGrade >= 75
+                              ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                              : 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
+                          }`}
+                        >
+                          {semGrade.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-50 text-slate-400 ring-1 ring-slate-200">
+                          Pending
+                        </span>
+                      )}
+
                       <ChevronRight
-                        className="text-slate-300 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all"
-                        size={18}
+                        size={16}
+                        className="text-slate-300 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all"
                       />
                     </div>
                   </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Upcoming Activities Table / Feed */}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Upcoming & Active Quizzes</h2>
+            <p className="text-xs text-slate-500">Activities requiring your submission or review</p>
+          </div>
+          <Link
+            to="/student/activities"
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+          >
+            View all activities
+          </Link>
+        </div>
+
+        {upcoming.length === 0 ? (
+          <div className="py-12 text-center text-xs font-medium text-slate-400">
+            No active or upcoming quizzes scheduled right now.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <th className="py-3 px-3">Subject</th>
+                  <th className="py-3 px-3">Activity</th>
+                  <th className="py-3 px-3">Due Date</th>
+                  <th className="py-3 px-3">Status / Score</th>
+                  <th className="py-3 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {upcoming.map((t) => (
+                  <tr key={t.key} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-3.5 px-3 font-semibold text-slate-800">
+                      {t.subject}
+                    </td>
+                    <td className="py-3.5 px-3 font-medium text-slate-900">
+                      {t.title}
+                    </td>
+                    <td className="py-3.5 px-3 text-slate-500">
+                      <div className="flex items-center gap-1.5">
+                        <Clock size={13} className="text-slate-400" />
+                        <span>{t.dueLabel}</span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-3">
+                      {t.isCompleted && t.attempt ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20">
+                          Score: {t.attempt.score ?? 0}/{t.attempt.total ?? 0}
+                        </span>
+                      ) : (
+                        <StatusPill status={t.status} />
+                      )}
+                    </td>
+                    <td className="py-3.5 px-3 text-right">
+                      {t.takeable ? (
+                        <Link
+                          to={t.link}
+                          className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors"
+                        >
+                          Start
+                        </Link>
+                      ) : (
+                        <Link
+                          to={t.link}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                        >
+                          Details <ChevronRight size={14} />
+                        </Link>
+                      )}
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            )}
-          </aside>
-        </section>
-      </main>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

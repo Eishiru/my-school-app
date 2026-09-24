@@ -1,12 +1,13 @@
-'use client';
+import EditQuizTitleDialog from "./EditQuizTitleDialog";
+import DuplicateQuizDialog from "./DuplicateQuizDialog";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import axios from 'axios';
 import {
   Plus,
   Search,
   ArrowUpDown,
+  Filter,
   CalendarClock,
   ClipboardList,
   Layers,
@@ -15,72 +16,85 @@ import {
   ExternalLink,
   RefreshCw,
   Download,
-} from 'lucide-react';
+  MoreVertical,
+  Edit3,
+  Copy,
+  Clock,
+  BookOpen,
+} from "lucide-react";
 
-interface Quiz {
-  id: number;
-  quiz_id: string;
-  title: string;
-  subject_name: string;
-  open_time: string;
-  close_time: string;
-  status: string;
-  question_count: number;
-  is_open: boolean;
-  is_upcoming: boolean;
-  is_closed: boolean;
-}
+import {
+  useDeleteTeacherQuiz,
+  useTeacherQuizzes,
+  useTeacherSubjects,
+} from "../../../hooks/useTeacherSubjects";
 
-type SortKey = 'status' | 'open_desc' | 'open_asc' | 'title' | 'subject';
+import type { TeacherQuiz } from "../../../types/teacherTypes";
 
-function fmtDT(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+type SortKey =
+  | "status"
+  | "open_desc"
+  | "open_asc"
+  | "title"
+  | "subject";
+
+function fmtDT(iso: string | null | undefined) {
+  if (!iso) return "—";
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
-function statusRank(q: Quiz) {
-  // OPEN first, then UPCOMING, then CLOSED, then fallback
-  if (q.is_open) return 0;
-  if (q.is_upcoming) return 1;
-  if (q.is_closed) return 2;
+function statusRank(quiz: TeacherQuiz) {
+  if (quiz.is_open) return 0;
+  if (quiz.is_upcoming) return 1;
+  if (quiz.is_closed) return 2;
+
   return 3;
 }
 
-function statusChip(q: Quiz) {
-  const base = 'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wider';
-  if (q.is_open)
+function statusChip(quiz: TeacherQuiz) {
+  if (quiz.is_open) {
     return (
-      <span className={`${base} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`}>
-        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
         Open
       </span>
     );
-  if (q.is_upcoming)
+  }
+
+  if (quiz.is_upcoming) {
     return (
-      <span className={`${base} bg-amber-50 text-amber-700 ring-1 ring-amber-200`}>
-        <span className="h-2 w-2 rounded-full bg-amber-500" />
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
         Upcoming
       </span>
     );
-  if (q.is_closed)
+  }
+
+  if (quiz.is_closed) {
     return (
-      <span className={`${base} bg-slate-50 text-slate-600 ring-1 ring-slate-200`}>
-        <span className="h-2 w-2 rounded-full bg-slate-400" />
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
         Closed
       </span>
     );
+  }
 
   return (
-    <span className={`${base} bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200`}>
-      <span className="h-2 w-2 rounded-full bg-indigo-500" />
-      {q.status || 'Status'}
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+      {quiz.status || "Status"}
     </span>
   );
 }
@@ -90,329 +104,688 @@ function StatCard({
   label,
   value,
   hint,
+  accent = "bg-indigo-50 text-indigo-600 border-indigo-100",
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   hint: string;
+  accent?: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</div>
-            <div className="mt-3 text-4xl font-black tracking-tight text-slate-900">{value}</div>
-            <div className="mt-2 text-xs text-slate-500">{hint}</div>
-          </div>
-          <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700">
-            {icon}
-          </div>
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm hover:border-indigo-200 transition-all">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+            {label}
+          </span>
+          <p className="mt-1.5 text-2xl font-bold tracking-tight text-slate-900 font-mono">
+            {value}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-400">{hint}</p>
+        </div>
+        <div className={`p-2.5 rounded-xl border ${accent}`}>
+          {icon}
         </div>
       </div>
-      {/* <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-slate-100" /> */}
+    </div>
+  );
+}
+
+function QuizActions({
+  quiz,
+  deleting,
+  isOpen,
+  isBottom,
+  onToggle,
+  onEdit,
+  onDuplicate,
+  onDelete,
+}: {
+  quiz: { id: number; title: string };
+  deleting: boolean;
+  isOpen: boolean;
+  isBottom: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="relative inline-block text-left" data-quiz-menu={quiz.id}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className={`p-1.5 rounded-lg border transition-colors ${
+          isOpen
+            ? "border-slate-300 bg-slate-100 text-slate-800 shadow-inner"
+            : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+        }`}
+        aria-label={`Actions for ${quiz.title}`}
+      >
+        <MoreVertical size={16} />
+      </button>
+
+      {isOpen && (
+        <div
+          className={`absolute right-0 w-48 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 ${
+            isBottom
+              ? "bottom-full mb-1.5 origin-bottom-right"
+              : "top-full mt-1.5 origin-top-right"
+          }`}
+        >
+          <Link
+            to={`/teacher/activities/${quiz.id}`}
+            onClick={onToggle}
+            className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
+          >
+            <ExternalLink size={14} className="text-indigo-600 shrink-0" />
+            <span>Manage Activity</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => {
+              onToggle();
+              onEdit();
+            }}
+            className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
+          >
+            <Edit3 size={14} className="text-slate-600 shrink-0" />
+            <span>Edit Title</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onToggle();
+              onDuplicate();
+            }}
+            className="w-full text-left px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 font-medium transition-colors"
+          >
+            <Copy size={14} className="text-slate-600 shrink-0" />
+            <span>Duplicate</span>
+          </button>
+
+          <div className="my-1 border-t border-slate-100" />
+
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => {
+              onToggle();
+              onDelete();
+            }}
+            className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 font-medium transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={14} className="text-rose-600 shrink-0" />
+            <span>{deleting ? "Deleting…" : "Delete Activity"}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function TeacherQuizList() {
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [editingTitle, setEditingTitle] = useState<{ id: number; title: string } | null>(null);
+  const [duplicateQuiz, setDuplicateQuiz] = useState<{ id: number; title: string } | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
-  // UI controls
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SortKey>('status');
+  // UI state
+  const [query, setQuery] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState<string>("ALL");
+
+  const [sort, setSort] =
+    useState<SortKey>("status");
+
+  // Server state
+  const {
+    data: quizzes = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useTeacherQuizzes();
+
+  const { data: teacherSubjects = [] } = useTeacherSubjects();
 
   useEffect(() => {
-    fetchQuizzes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (openMenuId === null) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-quiz-menu]")) {
+        setOpenMenuId(null);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenMenuId(null);
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
 
-  const fetchQuizzes = async () => {
-    try {
-      setLoading(true);
-      const savedUser = localStorage.getItem('user');
-      const token = savedUser ? JSON.parse(savedUser).token : null;
+  useEffect(() => {
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.hidden) return;
+      pending = true;
+      try { await refetch(); } finally { pending = false; }
+    };
+    const timer = window.setInterval(() => void refresh(), 5000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [refetch]);
 
-      const response = await axios.get('http://127.0.0.1:8000/api/teacher/quizzes/', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+  const deleteQuiz = useDeleteTeacherQuiz();
 
-      setQuizzes(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-      console.error('Error fetching quizzes:', error);
-      setQuizzes([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleDelete = (quizId: number) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this quiz?"
+    );
 
-  const deleteQuiz = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this quiz?')) return;
+    if (!confirmed) return;
 
-    try {
-      const savedUser = localStorage.getItem('user');
-      const token = savedUser ? JSON.parse(savedUser).token : null;
+    deleteQuiz.mutate(quizId, {
+      onError: (error) => {
+        console.error(
+          "Error deleting quiz:",
+          error
+        );
 
-      await axios.delete(`http://127.0.0.1:8000/api/teacher/quizzes/${id}/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      fetchQuizzes();
-    } catch (error) {
-      console.error('Error deleting quiz:', error);
-    }
+        alert(
+          error instanceof Error
+            ? error.message
+            : "Failed to delete quiz."
+        );
+      },
+    });
   };
 
   const stats = useMemo(() => {
-    const open = quizzes.filter((q) => q.is_open).length;
-    const upcoming = quizzes.filter((q) => q.is_upcoming).length;
-    const closed = quizzes.filter((q) => q.is_closed).length;
-    return { total: quizzes.length, open, upcoming, closed };
+    const open = quizzes.filter(
+      (quiz) => quiz.is_open
+    ).length;
+
+    const upcoming = quizzes.filter(
+      (quiz) => quiz.is_upcoming
+    ).length;
+
+    const closed = quizzes.filter(
+      (quiz) => quiz.is_closed
+    ).length;
+
+    return {
+      total: quizzes.length,
+      open,
+      upcoming,
+      closed,
+    };
   }, [quizzes]);
 
   const visibleQuizzes = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    let arr = [...quizzes].filter((q) => {
-      if (!needle) return true;
-      return (
-        q.title.toLowerCase().includes(needle) ||
-        q.subject_name.toLowerCase().includes(needle) ||
-        q.quiz_id.toLowerCase().includes(needle)
-      );
-    });
+    const needle =
+      query.trim().toLowerCase();
 
-    arr.sort((a, b) => {
-      if (sort === 'status') {
-        const ra = statusRank(a);
-        const rb = statusRank(b);
-        if (ra !== rb) return ra - rb;
-        // tie-breaker: open_time desc
-        return new Date(b.open_time).getTime() - new Date(a.open_time).getTime();
+    const filtered = quizzes.filter(
+      (quiz) => {
+        if (selectedSubject !== "ALL") {
+          const matchId =
+            quiz.SubjectOffering !== undefined &&
+            String(quiz.SubjectOffering) === selectedSubject;
+          const matchName =
+            quiz.subject_name?.toLowerCase() === selectedSubject.toLowerCase();
+          if (!matchId && !matchName) return false;
+        }
+
+        if (!needle) return true;
+
+        return (
+          quiz.title
+            ?.toLowerCase()
+            .includes(needle) ||
+          quiz.subject_name
+            ?.toLowerCase()
+            .includes(needle) ||
+          quiz.quiz_id
+            ?.toLowerCase()
+            .includes(needle)
+        );
+      }
+    );
+
+    return [...filtered].sort((a, b) => {
+      if (sort === "status") {
+        const rankA = statusRank(a);
+        const rankB = statusRank(b);
+
+        if (rankA !== rankB) {
+          return rankA - rankB;
+        }
+
+        return (
+          new Date(b.open_time).getTime() -
+          new Date(a.open_time).getTime()
+        );
       }
 
-      if (sort === 'open_desc') return new Date(b.open_time).getTime() - new Date(a.open_time).getTime();
-      if (sort === 'open_asc') return new Date(a.open_time).getTime() - new Date(b.open_time).getTime();
-      if (sort === 'title') return a.title.localeCompare(b.title);
-      if (sort === 'subject') return a.subject_name.localeCompare(b.subject_name);
+      if (sort === "open_desc") {
+        return (
+          new Date(b.open_time).getTime() -
+          new Date(a.open_time).getTime()
+        );
+      }
+
+      if (sort === "open_asc") {
+        return (
+          new Date(a.open_time).getTime() -
+          new Date(b.open_time).getTime()
+        );
+      }
+
+      if (sort === "title") {
+        return a.title.localeCompare(b.title);
+      }
+
+      if (sort === "subject") {
+        return a.subject_name.localeCompare(
+          b.subject_name
+        );
+      }
 
       return 0;
     });
-
-    return arr;
   }, [quizzes, query, sort]);
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <main className="min-h-[70vh] bg-slate-50">
-        <div className="mx-auto max-w-6xl px-4 md:px-6 py-10">
-          <div className="h-8 w-64 rounded-2xl bg-slate-200/80 animate-pulse" />
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <div className="h-28 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-            <div className="h-28 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-            <div className="h-28 rounded-3xl border border-slate-200 bg-white animate-pulse" />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="h-7 w-48 rounded-lg bg-slate-200 animate-pulse" />
+            <div className="h-4 w-72 rounded-lg bg-slate-100 animate-pulse" />
           </div>
-          <div className="mt-6 h-14 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-          <div className="mt-4 space-y-3">
-            <div className="h-20 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-            <div className="h-20 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-            <div className="h-20 rounded-3xl border border-slate-200 bg-white animate-pulse" />
-          </div>
+          <div className="h-9 w-32 rounded-lg bg-slate-200 animate-pulse" />
         </div>
-      </main>
+
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-24 rounded-xl border border-slate-200/80 bg-white animate-pulse"
+            />
+          ))}
+        </div>
+
+        <div className="h-11 rounded-xl border border-slate-200/80 bg-white animate-pulse" />
+
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-20 rounded-xl border border-slate-200/80 bg-white animate-pulse"
+            />
+          ))}
+        </div>
+        {duplicateQuiz && (
+          <DuplicateQuizDialog
+            key={duplicateQuiz.id}
+            quiz={duplicateQuiz}
+            onClose={() => setDuplicateQuiz(null)}
+            onCreated={() => {
+              void refetch();
+            }}
+          />
+        )}
+        {editingTitle && (
+          <EditQuizTitleDialog
+            key={editingTitle.id}
+            quiz={editingTitle}
+            onClose={() => setEditingTitle(null)}
+            onSaved={() => {
+              void refetch();
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-8 text-center max-w-xl mx-auto">
+          <h2 className="text-base font-semibold text-rose-800">
+            Unable to load activities
+          </h2>
+
+          <p className="mt-1.5 text-xs text-rose-600">
+            {error instanceof Error
+              ? error.message
+              : "Something went wrong while loading your quizzes."}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
+          >
+            {isFetching ? "Retrying..." : "Try again"}
+          </button>
+        </div>
+        {duplicateQuiz && (
+          <DuplicateQuizDialog
+            key={duplicateQuiz.id}
+            quiz={duplicateQuiz}
+            onClose={() => setDuplicateQuiz(null)}
+            onCreated={() => {
+              void refetch();
+            }}
+          />
+        )}
+        {editingTitle && (
+          <EditQuizTitleDialog
+            key={editingTitle.id}
+            quiz={editingTitle}
+            onClose={() => setEditingTitle(null)}
+            onSaved={() => {
+              void refetch();
+            }}
+          />
+        )}
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      {/* Top bar */}
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/85 backdrop-blur">
-        <div className="mx-auto px-4 md:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Teacher</div>
-              <h1 className="truncate text-xl md:text-2xl font-black tracking-tight text-slate-900">
-                My Activities
-              </h1>
-            </div>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Activity Management
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Create, schedule, monitor and manage quiz assessments across your subjects.
+          </p>
+        </div>
 
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={fetchQuizzes}
-                className="hidden sm:inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
-                title="Refresh list"
-              >
-                <RefreshCw size={16} />
-                Refresh
-              </button>
+        <div className="flex items-center gap-2">
+          {/* <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw
+              size={14}
+              className={isFetching ? "animate-spin text-indigo-600" : "text-slate-500"}
+            />
+            <span>{isFetching ? "Refreshing..." : "Refresh"}</span>
+          </button> */}
 
-              <Link
-                to="/teacher/activities/create"
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600 transition"
-              >
-                <Plus size={16} />
-                Create Activity
-              </Link>
-            </div>
+          <Link
+            to="/teacher/activities/create"
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors"
+          >
+            <Plus size={15} />
+            <span>Create Activity</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          icon={<Layers size={18} />}
+          label="Total Activities"
+          value={stats.total}
+          hint="All created quizzes"
+          accent="bg-indigo-50 text-indigo-600 border-indigo-100/80"
+        />
+        <StatCard
+          icon={<CalendarClock size={18} />}
+          label="Active & Open"
+          value={stats.open}
+          hint="Available for students"
+          accent="bg-emerald-50 text-emerald-600 border-emerald-100/80"
+        />
+        <StatCard
+          icon={<ClipboardList size={18} />}
+          label="Upcoming"
+          value={stats.upcoming}
+          hint="Scheduled for later"
+          accent="bg-amber-50 text-amber-600 border-amber-100/80"
+        />
+        <StatCard
+          icon={<Clock size={18} />}
+          label="Closed"
+          value={stats.closed}
+          hint="Ended / locked"
+          accent="bg-slate-100 text-slate-600 border-slate-200/80"
+        />
+      </div>
+
+      {/* Search & Sort Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search activities"
+            placeholder="Search by title, subject, or quiz ID..."
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-slate-200/80 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-xs"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Subject Filter Dropdown */}
+          <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 shadow-xs">
+            <Filter size={14} className="text-slate-400" />
+            <span className="text-xs font-medium text-slate-500">Subject:</span>
+            <select
+              aria-label="Filter activities by subject"
+              value={selectedSubject}
+              onChange={(e) => setSelectedSubject(e.target.value)}
+              className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer max-w-[160px] truncate"
+            >
+              <option value="ALL">All Subjects</option>
+              {teacherSubjects.map((sub) => (
+                <option key={sub.id} value={String(sub.id)}>
+                  {sub.name} {sub.section ? `(${sub.section})` : ""}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Search + sort row */}
-          <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by title, subject, or quiz ID…"
-                className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="inline-flex items-center gap-2 px-3 py-3 rounded-2xl border border-slate-200 bg-white">
-                <ArrowUpDown size={18} className="text-slate-500" />
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as SortKey)}
-                  className="text-sm font-black text-slate-700 outline-none bg-transparent"
-                >
-                  <option value="status">Status (Open → Upcoming → Closed)</option>
-                  <option value="open_desc">Open time (Newest)</option>
-                  <option value="open_asc">Open time (Oldest)</option>
-                  <option value="title">Title (A–Z)</option>
-                  <option value="subject">Subject (A–Z)</option>
-                </select>
-              </div>
-
-              <button
-                type="button"
-                onClick={fetchQuizzes}
-                className="sm:hidden inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
-                title="Refresh list"
-              >
-                <RefreshCw size={16} />
-              </button>
-            </div>
+          <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 shadow-xs">
+            <ArrowUpDown size={14} className="text-slate-400" />
+            <span className="text-xs font-medium text-slate-500">Sort:</span>
+            <select
+              aria-label="Sort activities"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer"
+            >
+              <option value="status">Status (Open → Upcoming → Closed)</option>
+              <option value="open_desc">Open Time (Newest First)</option>
+              <option value="open_asc">Open Time (Oldest First)</option>
+              <option value="title">Title (A–Z)</option>
+              <option value="subject">Subject (A–Z)</option>
+            </select>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="mx-auto max-w-8xl px-4 md:px-6 py-6 md:py-10">
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <StatCard icon={<Layers size={18} />} label="Total" value={<span>{stats.total}</span>} hint="All activities" />
-          <StatCard icon={<CalendarClock size={18} />} label="Open" value={<span>{stats.open}</span>} hint="Available now" />
-          <StatCard icon={<ClipboardList size={18} />} label="Upcoming" value={<span>{stats.upcoming}</span>} hint="Scheduled" />
-          <StatCard icon={<Download size={18} />} label="Closed" value={<span>{stats.closed}</span>} hint="Ended / locked" />
-        </div>
-
-        {/* List card */}
-        <div className="mt-6 rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="p-6 md:p-8 border-b border-slate-100">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Activities</div>
-                <div className="mt-2 text-2xl md:text-3xl font-black tracking-tight text-slate-900">Quiz List</div>
-                <div className="mt-2 text-sm text-slate-600">
-                  Manage your quizzes, schedules, and items.
-                </div>
-              </div>
-
-              <div className="hidden md:flex items-center gap-2">
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-black text-slate-700">
-                  <Settings2 size={16} className="text-slate-600" />
-                  {visibleQuizzes.length} shown
-                </div>
-              </div>
-            </div>
+      {/* Activities Table/List Container */}
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-xs relative">
+        <div className="rounded-t-xl border-b border-slate-100 px-5 py-4 flex items-center justify-between bg-slate-50/50">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">
+              Activities & Assessments
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Showing {visibleQuizzes.length} of {quizzes.length} total quizzes
+            </p>
           </div>
 
-          {visibleQuizzes.length === 0 ? (
-            <div className="p-8">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6">
-                <div className="font-black text-slate-900">No activities found</div>
-                <div className="mt-1 text-sm text-slate-600">
-                  {quizzes.length === 0
-                    ? 'No quizzes yet. Create your first activity!'
-                    : 'Try a different search keyword or change sorting.'}
-                </div>
-                <div className="mt-4">
-                  <Link
-                    to="/teacher/activities/create"
-                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600 transition"
-                  >
-                    <Plus size={16} />
-                    Create Activity
-                  </Link>
-                </div>
-              </div>
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <Settings2 size={14} className="text-slate-400" />
+            <span>{visibleQuizzes.length} shown</span>
+          </div>
+        </div>
+
+        {visibleQuizzes.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="mx-auto w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
+              <ClipboardList size={22} />
             </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {visibleQuizzes.map((quiz) => (
-                <div key={quiz.id} className="p-5 md:p-6 hover:bg-slate-50 transition">
-                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                    {/* left */}
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-lg md:text-xl font-black text-slate-900 truncate">{quiz.title}</div>
+            <h3 className="text-sm font-semibold text-slate-800">
+              No activities found
+            </h3>
+            <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
+              {quizzes.length === 0
+                ? "You have not created any quizzes yet. Click below to create your first activity."
+                : "No quizzes match your current search and filter criteria."}
+            </p>
+            {quizzes.length === 0 && (
+              <div className="mt-4">
+                <Link
+                  to="/teacher/activities/create"
+                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition-colors"
+                >
+                  <Plus size={14} />
+                  <span>Create Activity</span>
+                </Link>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {visibleQuizzes.map((quiz, index) => {
+              const isDeleting =
+                deleteQuiz.isPending && deleteQuiz.variables === quiz.id;
+
+              return (
+                <div
+                  key={quiz.id}
+                  className="p-4 hover:bg-slate-50/75 transition-colors"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2.5 font-semibold text-sm text-indigo-600 transition-colors">
+                        
+                        {quiz.title}
+                        
                         {statusChip(quiz)}
                       </div>
 
-                      <div className="mt-2 text-sm text-slate-600">
-                        Subject: <span className="font-bold text-slate-800">{quiz.subject_name}</span>
-                      </div>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
+                          <BookOpen size={13} className="text-slate-400" />
+                          {quiz.subject_name}
+                        </span>
 
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-xs text-slate-600">
-                        
-                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Opens</div>
-                          <div className="mt-1 font-bold text-slate-800">{fmtDT(quiz.open_time)}</div>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Closes</div>
-                          <div className="mt-1 font-bold text-slate-800">{fmtDT(quiz.close_time)}</div>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Questions</div>
-                          <div className="mt-1 font-bold text-slate-800">{quiz.question_count}</div>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Clock size={13} className="text-slate-400" />
+                          <span>Opens:</span>
+                          <span className="font-medium text-slate-700">
+                            {fmtDT(quiz.open_time)}
+                          </span>
+                        </span>
+
+                        <span className="inline-flex items-center gap-1.5">
+                          <Clock size={13} className="text-slate-400" />
+                          <span>Closes:</span>
+                          <span className="font-medium text-slate-700">
+                            {fmtDT(quiz.close_time)}
+                          </span>
+                        </span>
+
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
+                          {quiz.question_count} {quiz.question_count === 1 ? "question" : "questions"}
+                        </span>
                       </div>
                     </div>
 
-                    {/* right */}
-                    <div className="flex items-center justify-end gap-2">
-                      <Link
-                        to={`/teacher/activities/${quiz.id}`}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600 transition"
-                        title="Manage activity"
-                      >
-                        <ExternalLink size={16} />
-                        Manage
-                      </Link>
-
-                      <button
-                        onClick={() => deleteQuiz(quiz.id)}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-black text-rose-700 hover:bg-rose-100 transition"
-                        title="Delete activity"
-                      >
-                        <Trash2 size={16} />
-                        Delete
-                      </button>
+                    <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                      <QuizActions
+                        quiz={quiz}
+                        deleting={isDeleting}
+                        isOpen={openMenuId === quiz.id}
+                        isBottom={index >= visibleQuizzes.length - 2 && visibleQuizzes.length > 2}
+                        onToggle={() =>
+                          setOpenMenuId(openMenuId === quiz.id ? null : quiz.id)
+                        }
+                        onEdit={() =>
+                          setEditingTitle({ id: quiz.id, title: quiz.title })
+                        }
+                        onDuplicate={() =>
+                          setDuplicateQuiz({ id: quiz.id, title: quiz.title })
+                        }
+                        onDelete={() => handleDelete(quiz.id)}
+                      />
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
-        <div className="mt-4 text-xs text-slate-500">
-          Tip: Use search to quickly find a quiz by <span className="font-black text-slate-900">Quiz ID</span>.
+        <div className="rounded-b-xl border-t border-slate-100 bg-slate-50/50 px-5 py-3 flex flex-wrap items-center justify-between text-xs text-slate-500">
+          <span>{visibleQuizzes.length} of {quizzes.length} activities shown</span>
+          <span>
+            Sorted by:{" "}
+            <strong className="font-semibold text-slate-700">
+              {sort === "status"
+                ? "Status"
+                : sort === "title"
+                ? "Title"
+                : sort === "subject"
+                ? "Subject"
+                : "Open Time"}
+            </strong>
+          </span>
         </div>
       </div>
-    </main>
+
+      {duplicateQuiz && (
+        <DuplicateQuizDialog
+          key={duplicateQuiz.id}
+          quiz={duplicateQuiz}
+          onClose={() => setDuplicateQuiz(null)}
+          onCreated={() => {
+            void refetch();
+          }}
+        />
+      )}
+      {editingTitle && (
+        <EditQuizTitleDialog
+          key={editingTitle.id}
+          quiz={editingTitle}
+          onClose={() => setEditingTitle(null)}
+          onSaved={() => {
+            void refetch();
+          }}
+        />
+      )}
+    </div>
   );
 }

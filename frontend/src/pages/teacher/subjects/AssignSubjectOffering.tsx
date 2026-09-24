@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../../../api/config";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -32,7 +33,7 @@ export default function AssignSubjectOffering() {
   useEffect(() => {
     if (!token) return;
 
-    fetch("http://127.0.0.1:8000/api/sections/", {
+    fetch(`${API_BASE_URL}/sections/`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
@@ -56,7 +57,7 @@ export default function AssignSubjectOffering() {
       schedule: formData.schedule,
     };
 
-    const res = await fetch("http://127.0.0.1:8000/api/subject-offerings/", {
+    const res = await fetch(`${API_BASE_URL}/subject-offerings/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

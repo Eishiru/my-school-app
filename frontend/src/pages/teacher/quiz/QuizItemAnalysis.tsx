@@ -2,8 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { authFetch } from '../../lib/api';
+import { authFetch } from '../../../api/apiClient';
 import {
   ArrowLeft,
   BarChart3,
@@ -14,60 +13,9 @@ import {
   Layers,
   Users,
   Percent,
+  Sparkles,
 } from 'lucide-react';
-
-interface ChoiceDistribution {
-  [choice_id: number]: {
-    text: string;
-    count: number;
-    percentage: number;
-    is_correct: boolean;
-  };
-}
-
-interface ScoreBin{
-  score: number;
-  count: number;
-  percentage: number;
-}
-
-interface QuestionAnalysis {
-  question_id: number;
-  question_text: string;
-  question_type: string;
-  points: number;
-  order: number;
-  total_attempts: number;
-
-  correct_count: number;
-  incorrect_count: number;
-  correct_percentage: number;
-  difficulty: string;
-  choice_distribution: ChoiceDistribution;
-
-  ungraded_count: number;
-  analysis_mode?: 'CHOICES' | 'SCORES' | 'N/A';
-  graded_count?: number;
-  pending_count?: number;
-  max_points?: number;
-  avg_score?: number | null;
-  score_distribution?: ScoreBin[];
-  ai_insight?: {
-    misconception_analysis: string;
-    teaching_strategy: string;
-    remediation_suggestion: string;
-    difficulty_validation: string;
-    confidence: number;
-  };
-}
-
-interface ItemAnalysisData {
-  quiz_id: number;
-  quiz_title: string;
-  total_questions: number;
-  total_student_attempts: number;
-  questions: QuestionAnalysis[];
-}
+import { useGenerateQuizAIAnalysis, useQuizItemAnalysis } from '../../../hooks/useTeacherSubjects';
 
 function SkeletonLine({ w = 'w-full' }: { w?: string }) {
   return <div className={`h-3 ${w} rounded-full bg-slate-200/80 animate-pulse`} />;
@@ -78,27 +26,30 @@ function StatCard({
   label,
   value,
   hint,
+  accent = "bg-indigo-50 text-indigo-600 border-indigo-100",
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   hint: string;
+  accent?: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</div>
-            <div className="mt-3 text-4xl font-black tracking-tight text-slate-900">{value}</div>
-            <div className="mt-2 text-xs text-slate-500">{hint}</div>
-          </div>
-          <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-700">
-            {icon}
-          </div>
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-indigo-200 transition-all">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+            {label}
+          </span>
+          <p className="mt-1.5 text-2xl font-bold tracking-tight text-slate-900 font-mono">
+            {value}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-400">{hint}</p>
+        </div>
+        <div className={`p-2.5 rounded-xl border ${accent}`}>
+          {icon}
         </div>
       </div>
-      {/* <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-slate-100" /> */}
     </div>
   );
 }
@@ -164,82 +115,88 @@ function pct(n: number) {
 export default function QuizItemAnalysis() {
   const { id } = useParams();
   const navigate = useNavigate();
-
-  const [data, setData] = useState<ItemAnalysisData | null>(null);
+  const quizId = Number(id || 0);
+  
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
-
-  useEffect(() => {
-    fetchItemAnalysis();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
-  const fetchItemAnalysis = async () => {
-    try {
-      setLoading(true);
-      setErrorMsg(null);
-
-      const savedUser = localStorage.getItem('user');
-      const token = savedUser ? JSON.parse(savedUser).token : null;
-
-      const response = await axios.get(`http://127.0.0.1:8000/api/teacher/quizzes/${id}/item-analysis/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setData(response.data);
-    } catch (error) {
-      console.error('Error fetching item analysis:', error);
-      setErrorMsg('Failed to load item analysis');
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGenerateAI = async () => {
-    try {
-      setLoadingAI(true);
-
-      const res = await authFetch(
-        `/api/teacher/quizzes/${id}/item-analysis/?with_ai=true`
-      );
-
-      const data = await res.json();
-
-      setData(data); // same state you use normally
-    } catch (error) {
-      console.error("AI error:", error);
-    } finally {
-      setLoadingAI(false);
-    }
-  };
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuizItemAnalysis(quizId);
 
   const avgSuccess = useMemo(() => {
     if (!data?.questions?.length) return 0;
 
     let totalNumerator = 0;
     let totalDenominator = 0;
-    
-    data.questions.forEach((q) => {
-      const attempts = q.total_attempts ?? 0;
-      if (q.analysis_mode === 'SCORES') {
-        const max = q.max_points ?? q.points ?? 0;
-        const avg = q.avg_score ?? 0;
-        const graded = q.graded_count ?? 0;
-        totalNumerator += avg * graded;
-        totalDenominator += max * graded;
+
+    data.questions.forEach((question) => {
+      const attempts = question.total_attempts ?? 0;
+
+      if (question.analysis_mode === "SCORES") {
+        const maxPoints =
+          question.max_points ??
+          question.points ??
+          0;
+
+        const averageScore =
+          question.avg_score ?? 0;
+
+        const gradedCount =
+          question.graded_count ?? 0;
+
+        totalNumerator +=
+          averageScore * gradedCount;
+
+        totalDenominator +=
+          maxPoints * gradedCount;
       } else {
-        totalNumerator += q.correct_count ?? 0;
+        totalNumerator +=
+          question.correct_count ?? 0;
+
         totalDenominator += attempts;
       }
     });
-    if (totalDenominator === 0) return 0;
-    return (totalNumerator / totalDenominator) * 100;
+
+    if (totalDenominator === 0) {
+      return 0;
+    }
+
+    return (
+      totalNumerator /
+      totalDenominator
+    ) * 100;
   }, [data]);
 
 
-  if (loading) {
+
+  const generateAI =
+    useGenerateQuizAIAnalysis();
+
+  const handleGenerateAI = () => {
+    generateAI.mutate(quizId, {
+      onError: (error) => {
+        console.error(
+          "AI analysis failed:",
+          error
+        );
+
+        alert(
+          error instanceof Error
+            ? error.message
+            : "Failed to generate AI insight."
+        );
+      },
+    });
+  };
+
+
+  if (isLoading) {
     return (
       <main className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-6xl px-4 md:px-6 py-8">
@@ -294,7 +251,7 @@ export default function QuizItemAnalysis() {
     );
   }
 
-  if (!data || errorMsg) {
+  if (!data || isError) {
     return (
       <main className="min-h-[70vh] bg-slate-50">
         <div className="mx-auto max-w-6xl px-4 md:px-6 py-10">
@@ -311,7 +268,7 @@ export default function QuizItemAnalysis() {
             <div className="mt-2 text-lg font-bold text-slate-900">{errorMsg ?? 'Failed to load item analysis'}</div>
             <div className="mt-1 text-sm text-slate-500">Try refreshing the page.</div>
             <button
-              onClick={fetchItemAnalysis}
+              onClick={() => refetch()}
               className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-600"
             >
               <BarChart3 size={16} />
@@ -324,56 +281,84 @@ export default function QuizItemAnalysis() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-slate-50/50 pb-12">
       {/* Sticky top bar */}
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/85 backdrop-blur">
-        <div className="mx-auto  px-4 md:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate(`/teacher/activities/${id}`)}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"
-            >
-              <ArrowLeft size={16} />
-              Back
-            </button>
+      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white shadow-xs">
+        <div className="mx-auto max-w-7xl px-4 md:px-6 py-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(`/teacher/activities/${id}`)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
+              >
+                <ArrowLeft size={14} />
+                <span>Back</span>
+              </button>
 
-            <div className="min-w-0">
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Item Analysis</div>
-              <h1 className="truncate text-xl md:text-2xl font-black tracking-tight text-slate-900">
-                {data.quiz_title}
-              </h1>
-              <div className="mt-0.5 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                Report • Quiz #{data.quiz_id}
+              <div className="min-w-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+                  Item Analysis
+                </span>
+                <h1 className="truncate text-xl font-bold tracking-tight text-slate-900">
+                  {data.quiz_title}
+                </h1>
+                <div className="mt-0.5 text-xs text-slate-500 font-medium">
+                  Quiz ID: {data.quiz_id}
+                </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={handleGenerateAI}
+              disabled={generateAI.isPending}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              <Sparkles size={14} className={generateAI.isPending ? "animate-spin" : ""} />
+              <span>{generateAI.isPending ? "Generating AI Insight..." : "Generate AI Insight"}</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-8xl px-4 md:px-6 py-6 md:py-10">
+      <div className="mx-auto max-w-7xl px-4 md:px-6 py-6 space-y-6">
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <StatCard icon={<Layers size={18} />} label="Total Questions" value={<span>{data.total_questions}</span>} hint="Number of items" />
-          <StatCard icon={<Users size={18} />} label="Student Attempts" value={<span>{data.total_student_attempts}</span>} hint="Total submissions" />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard
+            icon={<Layers size={18} />}
+            label="Total Questions"
+            value={data.total_questions}
+            hint="Number of items"
+            accent="bg-indigo-50 text-indigo-600 border-indigo-100"
+          />
+          <StatCard
+            icon={<Users size={18} />}
+            label="Student Attempts"
+            value={data.total_student_attempts}
+            hint="Total submissions"
+            accent="bg-blue-50 text-blue-600 border-blue-100"
+          />
           <StatCard
             icon={<Percent size={18} />}
             label="Avg Success"
-            value={<span>{pct(avgSuccess)}%</span>}
+            value={`${pct(avgSuccess)}%`}
             hint="Mean correct percentage"
+            accent="bg-emerald-50 text-emerald-600 border-emerald-100"
           />
         </div>
 
         {/* No attempts */}
         {data.total_student_attempts === 0 && (
-          <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
             <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-white/70 border border-amber-200 flex items-center justify-center text-amber-700">
-                <Info size={18} />
+              <div className="h-8 w-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                <Info size={16} />
               </div>
               <div>
-                <div className="font-black text-amber-900">No student attempts yet</div>
-                <div className="mt-1 text-sm text-amber-800">
-                  Item analysis will populate after students complete the quiz.
+                <div className="text-xs font-bold text-amber-900">No student attempts yet</div>
+                <div className="mt-0.5 text-xs text-amber-800">
+                  Item analysis will populate after students complete the activity.
                 </div>
               </div>
             </div>
@@ -381,29 +366,20 @@ export default function QuizItemAnalysis() {
         )}
 
         {/* Questions */}
-        <div className="mt-8">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
-                Question-by-question
-              </div>
-              <h2 className="mt-2 text-2xl md:text-3xl font-black tracking-tight text-slate-900">
-                Detailed Breakdown
-              </h2>
-              <p className="mt-2 text-sm text-slate-600">
-                See success rate, difficulty, and choice selection for each item.
-              </p>
-            </div>
+        <div className="space-y-4">
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Question-by-question
+            </span>
+            <h2 className="text-lg font-bold tracking-tight text-slate-900">
+              Detailed Breakdown
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Review success rate, difficulty, and student answer selection for each item.
+            </p>
           </div>
-          <button
-            onClick={handleGenerateAI}
-            disabled={loadingAI}
-            className="bg-purple-600 text-white px-4 py-2 rounded"
-          >
-            {loadingAI ? "Generating AI Insight..." : "Generate AI Insight"}
-          </button>
 
-          <div className="mt-6 space-y-4">
+          <div className="space-y-4">
             {[...data.questions]
             .sort((a, b) => a.order - b.order)
             .map((question, index) => {
@@ -427,84 +403,82 @@ export default function QuizItemAnalysis() {
               const scoreEntries = question.score_distribution || [];
               const hasScoreDist = isScores && scoreEntries.length > 0;
 
-
               return (
-                <div key={question.question_id} className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div key={question.question_id} className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
                   {/* header */}
-                  <div className="p-5 md:p-6 border-b border-slate-100">
+                  <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/40">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                      <div className="min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           {perf.icon}
-                          <div className="font-black text-slate-900">
+                          <div className="font-bold text-slate-900 text-sm">
                             Question {index + 1}
-                            <span className="ml-2 text-sm text-slate-500 font-bold">
+                            <span className="ml-1.5 text-xs text-slate-500 font-semibold">
                               ({question.points} pt{question.points !== 1 ? 's' : ''})
                             </span>
                           </div>
-                          <span className={`ml-1 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${diffChip}`}>
+                          <span className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ${diffChip}`}>
                             {question.difficulty}
                           </span>
-                          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black ${perf.chip}`}>
+                          <span className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ${perf.chip}`}>
                             {perf.label}
                           </span>
                         </div>
 
-                        <div className="mt-2 text-sm text-slate-700">{question.question_text}</div>
-                        <div className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+                        <div className="text-sm font-medium text-slate-800">{question.question_text}</div>
+                        <div className="text-xs text-slate-400 font-medium">
                           Type: {question.question_type.replace('_', ' ')}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                          <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 shadow-2xs text-right">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                             {isScores ? 'Avg Score %' : 'Success'}
                           </div>
-                          <div className="mt-1 text-xl font-black text-slate-900">{pct(successPct)}%</div>
-
+                          <div className="text-lg font-bold font-mono text-slate-900">{pct(successPct)}%</div>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   {/* stats */}
-                  <div className="p-5 md:p-6">
-                    <div className="grid gap-3 md:grid-cols-4">
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Attempts</div>
-                        <div className="mt-1 text-2xl font-black text-slate-900">{question.total_attempts}</div>
+                  <div className="p-4 sm:p-5">
+                    <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+                      <div className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-2xs">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Attempts</div>
+                        <div className="mt-1 text-xl font-bold font-mono text-slate-900">{question.total_attempts}</div>
                       </div>
 
                       {isScores ? (
                         <>
-                          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-700/70">Graded</div>
-                            <div className="mt-1 text-2xl font-black text-emerald-800">{question.graded_count ?? 0}</div>
+                          <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/50 p-3 shadow-2xs">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Graded</div>
+                            <div className="mt-1 text-xl font-bold font-mono text-emerald-800">{question.graded_count ?? 0}</div>
                           </div>
 
-                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-700/70">Pending</div>
-                            <div className="mt-1 text-2xl font-black text-amber-800">{pending}</div>
+                          <div className="rounded-lg border border-amber-200/80 bg-amber-50/50 p-3 shadow-2xs">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Pending</div>
+                            <div className="mt-1 text-xl font-bold font-mono text-amber-800">{pending}</div>
                           </div>
                         </>
                       ) : (
                         <>
-                          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-700/70">Correct</div>
-                            <div className="mt-1 text-2xl font-black text-emerald-800">{question.correct_count}</div>
+                          <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/50 p-3 shadow-2xs">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Correct</div>
+                            <div className="mt-1 text-xl font-bold font-mono text-emerald-800">{question.correct_count}</div>
                           </div>
 
-                          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-700/70">Incorrect</div>
-                            <div className="mt-1 text-2xl font-black text-rose-800">{question.incorrect_count}</div>
+                          <div className="rounded-lg border border-rose-200/80 bg-rose-50/50 p-3 shadow-2xs">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-rose-700">Incorrect</div>
+                            <div className="mt-1 text-xl font-bold font-mono text-rose-800">{question.incorrect_count}</div>
                           </div>
                         </>
                       )}
 
-                      <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-700/70">Tip</div>
-                        <div className="mt-1 text-sm font-bold text-indigo-800">{perf.tip}</div>
+                      <div className="rounded-lg border border-indigo-200/80 bg-indigo-50/50 p-3 shadow-2xs">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-700">Tip</div>
+                        <div className="mt-1 text-xs font-semibold text-indigo-800 line-clamp-2">{perf.tip}</div>
                       </div>
                     </div>
 
@@ -513,25 +487,25 @@ export default function QuizItemAnalysis() {
                     {hasChoiceDist ? (
                       <div className="mt-6">
                         <div className="text-sm font-black text-slate-900">Answer Choice Distribution</div>
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-3 space-y-2.5">
                           {distEntries.map(([choiceText, stats]) => (
-                            <div key={choiceText} className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div key={choiceText} className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs">
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className={`font-bold ${stats.is_correct ? 'text-emerald-700' : 'text-slate-800'} truncate`}>
+                                  <div className={`text-xs font-semibold ${stats.is_correct ? 'text-emerald-700' : 'text-slate-800'} truncate`}>
                                     {stats.is_correct ? '✓ ' : ''}
                                     {choiceText}
                                   </div>
-                                  <div className="mt-1 text-xs text-slate-500">
+                                  <div className="mt-0.5 text-[11px] text-slate-500">
                                     {stats.count} response{stats.count !== 1 ? 's' : ''} • {pct(stats.percentage)}%
                                   </div>
                                 </div>
-                                <div className={`text-xs font-black ${stats.is_correct ? 'text-emerald-700' : 'text-slate-600'}`}>
+                                <div className={`text-xs font-bold font-mono ${stats.is_correct ? 'text-emerald-700' : 'text-slate-600'}`}>
                                   {pct(stats.percentage)}%
                                 </div>
                               </div>
 
-                              <div className="mt-3 h-3 w-full rounded-full bg-slate-200 overflow-hidden">
+                              <div className="mt-2.5 h-2 w-full rounded-full bg-slate-100 overflow-hidden">
                                 <div
                                   className={stats.is_correct ? 'h-full bg-emerald-500' : 'h-full bg-slate-400'}
                                   style={{ width: `${Math.max(0, Math.min(100, stats.percentage))}%` }}
@@ -544,52 +518,68 @@ export default function QuizItemAnalysis() {
                     ) : null}
 
                     {question.ai_insight && (
-                      <div className="mt-4 p-4 bg-purple-50 border rounded">
-                        <h4 className="font-bold text-purple-700">AI Instructional Insight</h4>
+                      <div className="mt-4 p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-xl shadow-2xs">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 mb-2">
+                          <Sparkles size={14} className="text-indigo-600" />
+                          <span>AI Instructional Insight</span>
+                        </div>
 
-                        <p><strong>Misconception:</strong> {question.ai_insight.misconception_analysis}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-700">
+                          <div>
+                            <span className="font-semibold text-slate-900 block">Misconception:</span>
+                            <span className="text-slate-600">{question.ai_insight.misconception_analysis}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-900 block">Teaching Strategy:</span>
+                            <span className="text-slate-600">{question.ai_insight.teaching_strategy}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-900 block">Remediation:</span>
+                            <span className="text-slate-600">{question.ai_insight.remediation_suggestion}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-900 block">Difficulty Validation:</span>
+                            <span className="text-slate-600">{question.ai_insight.difficulty_validation}</span>
+                          </div>
+                        </div>
 
-                        <p><strong>Teaching Strategy:</strong> {question.ai_insight.teaching_strategy}</p>
-
-                        <p><strong>Remediation:</strong> {question.ai_insight.remediation_suggestion}</p>
-
-                        <p><strong>Difficulty Validation:</strong> {question.ai_insight.difficulty_validation}</p>
-
-                        <p><strong>Confidence:</strong> {(question.ai_insight.confidence * 100).toFixed(0)}%</p>
+                        <div className="mt-2 text-[11px] text-slate-400">
+                          Confidence: {(question.ai_insight.confidence * 100).toFixed(0)}%
+                        </div>
                       </div>
                     )}
 
                     {isScores ? (
                       <div className="mt-6">
                         <div className="flex items-end justify-between gap-3">
-                          <div className="text-sm font-black text-slate-900">Score Distribution</div>
-                          <div className="text-xs font-bold text-slate-500">
+                          <div className="text-xs font-bold text-slate-900">Score Distribution</div>
+                          <div className="text-xs text-slate-500">
                             Avg: {(question.avg_score ?? 0).toFixed(2)} / {(question.max_points ?? question.points ?? 0).toFixed(1)}
                           </div>
                         </div>
 
                         {pending > 0 ? (
-                          <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-800">
                             {pending} answer(s) still need manual grading. Distribution reflects graded answers only.
                           </div>
                         ) : null}
 
                         {hasScoreDist ? (
-                          <div className="mt-3 space-y-3">
+                          <div className="mt-3 space-y-2.5">
                             {scoreEntries.map((b) => (
-                              <div key={String(b.score)} className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <div key={String(b.score)} className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs">
                                 <div className="flex items-center justify-between gap-3">
-                                  <div className="font-bold text-slate-800">
+                                  <div className="font-semibold text-xs text-slate-800">
                                     {b.score} / {(question.max_points ?? question.points ?? 0).toFixed(1)}
                                   </div>
-                                  <div className="text-xs font-black text-slate-600">{pct(b.percentage)}%</div>
+                                  <div className="text-xs font-bold font-mono text-slate-600">{pct(b.percentage)}%</div>
                                 </div>
 
-                                <div className="mt-1 text-xs text-slate-500">
+                                <div className="mt-0.5 text-[11px] text-slate-500">
                                   {b.count} student{b.count !== 1 ? 's' : ''}
                                 </div>
 
-                                <div className="mt-3 h-3 w-full rounded-full bg-slate-200 overflow-hidden">
+                                <div className="mt-2.5 h-2 w-full rounded-full bg-slate-100 overflow-hidden">
                                   <div
                                     className="h-full bg-indigo-500"
                                     style={{ width: `${Math.max(0, Math.min(100, b.percentage))}%` }}
@@ -599,7 +589,7 @@ export default function QuizItemAnalysis() {
                             ))}
                           </div>
                         ) : (
-                          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                          <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50 p-4 text-xs text-slate-500">
                             No graded responses yet.
                           </div>
                         )}
