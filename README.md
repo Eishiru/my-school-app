@@ -21,7 +21,7 @@ This is a cleaned source workspace based on your latest my-school-app.zip. Open 
 
 ## Start locally (Windows, macOS or Linux)
 
-Install Python 3.12 and Node.js 22.12 or newer in the 22.x series. In a terminal at this folder:
+Install Python 3.12. Setup installs Node.js 22 and npm inside the same .venv using nodeenv; no global Node installation is required. Internet access is needed for dependency downloads. In a terminal at this folder:
 
 ```bash
 python scripts/setup.py
@@ -30,6 +30,14 @@ python scripts/backend.py createsuperuser
 ```
 
 Choose ADMIN for the superuser's role. The setup command creates missing .env files but never overwrites an existing one. The default backend environment uses a NEW local SQLite database. Your Supabase records are not deleted, copied or modified by setup. Migrations are a separate explicit command.
+
+Activate the environment in each terminal before running npm. On Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+On Windows Command Prompt use `.venv\Scripts\activate.bat`; on macOS/Linux use `source .venv/bin/activate`. Verify `node --version` and `npm --version`. React packages still live in frontend/node_modules. Vercel uses its own Node runtime; do not upload .venv.
 
 Start two terminals at this folder:
 

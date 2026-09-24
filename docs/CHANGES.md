@@ -31,3 +31,5 @@ Single-project revision:
 - Static assets resolve before React page fallback; missing asset URLs return 404.
 - One domain and /api path are used throughout the local/deployed workflow.
 - Verified Python syntax, configuration paths, route cases and WSGI adapter import using available Django dependencies. Live Vercel build remains untested.
+
+Local environment revision: setup installs nodeenv and Node 22/npm into the Python .venv and invokes that npm with the venv first on PATH. Existing local Node is preserved on reruns. Setup script syntax checked; Windows installation was not executed here.
