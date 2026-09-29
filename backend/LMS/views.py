@@ -1039,11 +1039,18 @@ class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelView
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        if self.request.user.role == 'TEACHER':
-            quizzes = Quiz.objects.filter(teacher=self.request.user)
-            Quiz.sync_statuses(quizzes)
-            return quizzes.order_by('-created_at')
-        return Quiz.objects.none()
+        if self.request.user.role != "TEACHER":
+            return Quiz.objects.none()
+
+        quizzes = Quiz.objects.filter(teacher=self.request.user)
+        Quiz.sync_statuses(quizzes)
+
+        return (
+            quizzes
+            .select_related("teacher", "SubjectOffering", "semester")
+            .prefetch_related("questions__choices", "attempts")
+            .order_by("-created_at")
+        )
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
