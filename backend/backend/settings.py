@@ -145,7 +145,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 import dj_database_url
 DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
 if DATABASE_URL:
-    db_conn_max_age = int(os.getenv('DJANGO_DB_CONN_MAX_AGE', '60'))
+    db_conn_max_age = int(os.getenv('DJANGO_DB_CONN_MAX_AGE', '0' if os.getenv('VERCEL') else '60'))
     DATABASES = {'default': dj_database_url.parse(DATABASE_URL, conn_max_age=db_conn_max_age,
         ssl_require=os.getenv('DATABASE_SSL_REQUIRED', 'true').lower() == 'true')}
     DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True

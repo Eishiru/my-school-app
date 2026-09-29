@@ -205,10 +205,33 @@ class TeacherSubjectListViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        from django.db.models import OuterRef, Subquery, IntegerField, FloatField, Count, Avg
+
+        student_count_sq = Student.objects.filter(
+            section=OuterRef('section')
+        ).values('section').annotate(c=Count('id')).values('c')
+        
+        average_sq = QuarterlyGrade.objects.filter(
+            SubjectOffering=OuterRef('pk'),
+            final_grade__isnull=False,
+            semester__school_year__is_active=True
+        ).values('SubjectOffering').annotate(a=Avg('final_grade')).values('a')
+        
+        pending_sq = QuizAttempt.objects.filter(
+            quiz__SubjectOffering=OuterRef('pk'),
+            status='SUBMITTED',
+            answers__question__question_type='SHORT_ANSWER',
+            answers__manually_graded=False
+        ).values('quiz__SubjectOffering').annotate(c=Count('id', distinct=True)).values('c')
 
         return (
             SubjectOffering.objects
             .select_related("section", "teacher")
+            .annotate(
+                annotated_student_count=Subquery(student_count_sq, output_field=IntegerField()),
+                annotated_average=Subquery(average_sq, output_field=FloatField()),
+                annotated_pending_tasks=Subquery(pending_sq, output_field=IntegerField()),
+            )
             .filter(
                 teacher=user,
                 section__is_active=True
@@ -239,14 +262,39 @@ class SubjectOfferingViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
+        
+        from django.db.models import OuterRef, Subquery, IntegerField, FloatField, Count, Avg
+        
+        student_count_sq = Student.objects.filter(
+            section=OuterRef('section')
+        ).values('section').annotate(c=Count('id')).values('c')
+        
+        average_sq = QuarterlyGrade.objects.filter(
+            SubjectOffering=OuterRef('pk'),
+            final_grade__isnull=False,
+            semester__school_year__is_active=True
+        ).values('SubjectOffering').annotate(a=Avg('final_grade')).values('a')
+        
+        pending_sq = QuizAttempt.objects.filter(
+            quiz__SubjectOffering=OuterRef('pk'),
+            status='SUBMITTED',
+            answers__question__question_type='SHORT_ANSWER',
+            answers__manually_graded=False
+        ).values('quiz__SubjectOffering').annotate(c=Count('id', distinct=True)).values('c')
+
+        qs = SubjectOffering.objects.select_related("section", "teacher").annotate(
+            annotated_student_count=Subquery(student_count_sq, output_field=IntegerField()),
+            annotated_average=Subquery(average_sq, output_field=FloatField()),
+            annotated_pending_tasks=Subquery(pending_sq, output_field=IntegerField()),
+        )
 
         # Teachers only see their own offerings
         if user.role == "TEACHER":
-            return SubjectOffering.objects.filter(teacher=user).select_related("section", "teacher")
+            return qs.filter(teacher=user)
 
         # Admins can see all (optional)
         if user.role == "ADMIN":
-            return SubjectOffering.objects.all().select_related("section", "teacher")
+            return qs
 
         # Others see none
         return SubjectOffering.objects.none()
@@ -286,8 +334,10 @@ class SubjectOfferingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="quizzes")
     def quizzes(self, request, pk=None):
-        # IMPORTANT: FK field is SubjectOffering / SubjectOffering_id (NOT subject_offering)
-        qs = Quiz.objects.filter(SubjectOffering_id=pk).order_by("-posted_at", "-created_at")
+        from django.db.models import Count
+        qs = Quiz.objects.filter(SubjectOffering_id=pk).annotate(
+            question_count_annotated=Count('questions')
+        ).order_by("-posted_at", "-created_at")
         return Response(QuizSerializer(qs, many=True).data)
 
     @action(detail=True, methods=["get"], url_path="recent-quiz-grades")
@@ -463,8 +513,9 @@ class StudentSubjectOfferingViewSet(viewsets.ReadOnlyModelViewSet):
     
     @action(detail=True, methods=["get"], url_path="quizzes")
     def quizzes(self, request, pk=None):
+        from django.db.models import Count
         offering = self.get_object()
-        qs = offering.quizzes.all().order_by("-id")  # uses related_name="quizzes"
+        qs = offering.quizzes.annotate(question_count_annotated=Count('questions')).order_by("-id")
         return Response(QuizSerializer(qs, many=True).data)
     
     def retrieve(self, request, *args, **kwargs):
@@ -520,21 +571,35 @@ def teacher_submissions_summary(request):
     if request.user.role == "TEACHER":
         offerings = offerings.filter(teacher=request.user)
 
+    from django.db.models import OuterRef, Subquery, IntegerField, Count
+
+    student_count_sq = Student.objects.filter(
+        section=OuterRef('section')
+    ).values('section').annotate(c=Count('id')).values('c')
+
+    attempts_sq = QuizAttempt.objects.filter(
+        quiz__SubjectOffering=OuterRef('pk')
+    ).values('quiz__SubjectOffering').annotate(c=Count('id')).values('c')
+
+    unique_students_sq = QuizAttempt.objects.filter(
+        quiz__SubjectOffering=OuterRef('pk')
+    ).values('quiz__SubjectOffering').annotate(c=Count('student', distinct=True)).values('c')
+
     offerings = (
         offerings.select_related("section", "teacher")
         .annotate(
-            total_students=Count("section__students", distinct=True),
-            attempts=Count("quizzes__attempts", distinct=False),
-            unique_students=Count("quizzes__attempts__student", distinct=True),
+            total_students_annotated=Subquery(student_count_sq, output_field=IntegerField()),
+            attempts_annotated=Subquery(attempts_sq, output_field=IntegerField()),
+            unique_students_annotated=Subquery(unique_students_sq, output_field=IntegerField()),
         )
     )
 
     # Example summary payload
     data = []
     for o in offerings:
-        total_students = o.total_students
-        attempts = o.attempts
-        unique_students = o.unique_students
+        total_students = o.total_students_annotated or 0
+        attempts = o.attempts_annotated or 0
+        unique_students = o.unique_students_annotated or 0
         submission_rate = round((unique_students / total_students) * 100, 2) if total_students else 0
 
         data.append({
