@@ -51,8 +51,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
 
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="ACTIVE")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, db_index=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="ACTIVE", db_index=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -158,7 +158,8 @@ class Student(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="student_profile")
     grade_level=models.CharField(
         max_length=20,
-        choices=GRADE_LEVEL_CHOICES
+        choices=GRADE_LEVEL_CHOICES,
+        db_index=True
     )
     section = models.ForeignKey(
         Section,
@@ -315,6 +316,10 @@ class QuarterlyGrade(models.Model):
                 name="unique_legacy_student_offering_quarter",
             ),
         ]
+        indexes = [
+            models.Index(fields=["SubjectOffering", "semester"], name="idx_qg_offering_sem"),
+            models.Index(fields=["student", "semester"], name="idx_qg_student_sem"),
+        ]
         ordering = ['student', 'SubjectOffering', 'quarter']
     
     def calculate_final_grade(self):
@@ -363,7 +368,7 @@ class Quiz(models.Model):
     activity_mode = models.CharField(
         max_length=10, choices=ACTIVITY_MODE_CHOICES, default='INDIVIDUAL'
     )
-    grade_type = models.CharField(max_length=20, choices=GRADE_TYPE_CHOICES, default='WRITTEN_WORK')
+    grade_type = models.CharField(max_length=20, choices=GRADE_TYPE_CHOICES, default='WRITTEN_WORK', db_index=True)
     
     group_revision = models.PositiveIntegerField(default=0)
 
@@ -376,7 +381,7 @@ class Quiz(models.Model):
     # Quiz settings
     total_points = models.FloatField(default=0)
     passing_score = models.FloatField(default=60)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT', db_index=True)
     
     # Additional settings
     show_correct_answers = models.BooleanField(default=False)
@@ -387,6 +392,11 @@ class Quiz(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["SubjectOffering", "status"], name="idx_quiz_offering_status"),
+        ]
 
     def __str__(self):
         return self.title
@@ -501,11 +511,15 @@ class QuizAttempt(models.Model):
     submitted_at = models.DateTimeField(null=True, blank=True)
     time_spent = models.PositiveIntegerField(default=0, help_text="Time spent in seconds")
     score = models.FloatField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IN_PROGRESS')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IN_PROGRESS', db_index=True)
     
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['group', 'student'], name='unique_group_grade_credit'),
+        ]
+        indexes = [
+            models.Index(fields=['quiz', 'status'], name='idx_attempt_quiz_status'),
+            models.Index(fields=['quiz', 'student'], name='idx_attempt_quiz_student'),
         ]
 
     def __str__(self):

@@ -130,13 +130,13 @@ class AdminDashboardStatsView(APIView):
         })
 
 class SectionViewSet(ModelViewSet):
-    queryset = Section.objects.all()
+    queryset = Section.objects.select_related("adviser").annotate(student_count_annotated=Count("students"))
     serializer_class = SectionSerializer
     permission_classes = [IsAuthenticated]
 
     @action(detail=True, methods=["get"], url_path="students")
     def students(self, request, pk=None):
-        students = Student.objects.filter(section_id=pk)
+        students = Student.objects.filter(section_id=pk).select_related("user", "section")
         serializer = StudentSerializer(students, many=True)
         return Response(serializer.data)
 
@@ -208,10 +208,9 @@ class TeacherSubjectListViewSet(ReadOnlyModelViewSet):
 
         return (
             SubjectOffering.objects
-            .select_related("subject", "section")
+            .select_related("section", "teacher")
             .filter(
                 teacher=user,
-                subject__is_active=True,
                 section__is_active=True
             )
             .order_by("section__grade_level", "section__name")
@@ -243,11 +242,11 @@ class SubjectOfferingViewSet(viewsets.ModelViewSet):
 
         # Teachers only see their own offerings
         if user.role == "TEACHER":
-            return SubjectOffering.objects.filter(teacher=user)
+            return SubjectOffering.objects.filter(teacher=user).select_related("section", "teacher")
 
         # Admins can see all (optional)
         if user.role == "ADMIN":
-            return SubjectOffering.objects.all()
+            return SubjectOffering.objects.all().select_related("section", "teacher")
 
         # Others see none
         return SubjectOffering.objects.none()
@@ -259,7 +258,7 @@ class SubjectOfferingViewSet(viewsets.ModelViewSet):
         students_qs = (
             Student.objects
             .filter(section=offering.section)
-            .select_related("user")
+            .select_related("user", "section")
             # FIX: order by related user fields (not Student.last_name)
             .order_by("user__last_name", "user__first_name")
         )
@@ -496,7 +495,11 @@ class GradeChangeLogViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = GradeChangeLog.objects.all().order_by("-timestamp")
+        qs = (
+            GradeChangeLog.objects
+            .select_related("teacher", "student__user", "SubjectOffering")
+            .order_by("-timestamp")
+        )
 
         # Optional filters
         subject_offering_id = self.request.query_params.get("subject_offering")
@@ -517,16 +520,21 @@ def teacher_submissions_summary(request):
     if request.user.role == "TEACHER":
         offerings = offerings.filter(teacher=request.user)
 
-    # Example summary payload (adjust to what your frontend expects)
-    data = []
-    for o in offerings.select_related("subject", "section"):
-        total_students = Student.objects.filter(section=o.section).count()
-        # If you track "submissions" via QuizAttempt, you can compute here
-        attempts = QuizAttempt.objects.filter(quiz__SubjectOffering=o).count()
-        unique_students = (
-            QuizAttempt.objects.filter(quiz__SubjectOffering=o)
-            .values("student_id").distinct().count()
+    offerings = (
+        offerings.select_related("section", "teacher")
+        .annotate(
+            total_students=Count("section__students", distinct=True),
+            attempts=Count("quizzes__attempts", distinct=False),
+            unique_students=Count("quizzes__attempts__student", distinct=True),
         )
+    )
+
+    # Example summary payload
+    data = []
+    for o in offerings:
+        total_students = o.total_students
+        attempts = o.attempts
+        unique_students = o.unique_students
         submission_rate = round((unique_students / total_students) * 100, 2) if total_students else 0
 
         data.append({
@@ -560,16 +568,23 @@ def teacher_submissions_subject_detail(request, subject_offering_id: int):
     # total students in the offering’s section
     total_students = Student.objects.filter(section=offering.section_id).count()
 
-    # quizzes under this subject offering
-    quizzes = Quiz.objects.filter(SubjectOffering=offering).order_by("-id")
+    # quizzes under this subject offering with aggregated attempts and unique students
+    quizzes = (
+        Quiz.objects.filter(SubjectOffering=offering)
+        .annotate(
+            attempts_count=Count("attempts", distinct=False),
+            unique_students_count=Count("attempts__student", distinct=True),
+        )
+        .order_by("-id")
+    )
 
     quiz_rows = []
     total_attempts = 0
     total_unique_students = 0
 
     for q in quizzes:
-        attempts = QuizAttempt.objects.filter(quiz=q).count()
-        unique_students = QuizAttempt.objects.filter(quiz=q).values("student_id").distinct().count()
+        attempts = q.attempts_count
+        unique_students = q.unique_students_count
         total_attempts += attempts
         total_unique_students += unique_students
 
@@ -1539,7 +1554,18 @@ def published_quizzes_for_student(student):
         return Quiz.objects.none()
     quizzes = Quiz.objects.filter(SubjectOffering__section_id=student.section_id)
     Quiz.sync_statuses(quizzes)
-    return quizzes.exclude(status="DRAFT").select_related("SubjectOffering", "teacher", "semester")
+    return (
+        quizzes.exclude(status="DRAFT")
+        .select_related("SubjectOffering", "teacher", "semester")
+        .annotate(
+            question_count_annotated=Count("questions", distinct=True),
+            user_attempts_annotated=Count(
+                "attempts",
+                filter=Q(attempts__student=student),
+                distinct=True,
+            ),
+        )
+    )
 
 
 @api_view(['GET'])
@@ -2039,7 +2065,7 @@ def quarterly_grades(request):
                 grades_query = grades_query.filter(quarter=quarter)
             
             grades_query = filter_grade_semester(grades_query, request)
-            grades = grades_query.select_related('student__user', 'SubjectOffering').order_by('student__user__last_name', 'student__user__first_name')
+            grades = grades_query.select_related('student__user', 'SubjectOffering', 'semester').order_by('student__user__last_name', 'student__user__first_name')
             serializer = QuarterlyGradeSerializer(grades, many=True)
             return Response(serializer.data)
         
@@ -2056,7 +2082,7 @@ def quarterly_grades(request):
                 grades_query = grades_query.filter(quarter=quarter)
             
             grades_query = filter_grade_semester(grades_query, request)
-            grades = grades_query.select_related('SubjectOffering').order_by('quarter')
+            grades = grades_query.select_related('student__user', 'SubjectOffering', 'semester').order_by('quarter')
             serializer = QuarterlyGradeSerializer(grades, many=True)
             return Response(serializer.data)
         

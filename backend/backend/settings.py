@@ -138,14 +138,24 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 import dj_database_url
 DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
 if DATABASE_URL:
-    DATABASES = {'default': dj_database_url.parse(DATABASE_URL, conn_max_age=0,
+    db_conn_max_age = int(os.getenv('DJANGO_DB_CONN_MAX_AGE', '60'))
+    DATABASES = {'default': dj_database_url.parse(DATABASE_URL, conn_max_age=db_conn_max_age,
         ssl_require=os.getenv('DATABASE_SSL_REQUIRED', 'true').lower() == 'true')}
     DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
+    DATABASES['default']['CONN_HEALTH_CHECKS'] = True
     # Supabase transaction pooler compatibility with psycopg 3.
     if DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
         DATABASES['default'].setdefault('OPTIONS', {})['prepare_threshold'] = None
 elif DEBUG:
-    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+            'OPTIONS': {
+                'timeout': 20,
+            },
+        }
+    }
 else:
     raise ImproperlyConfigured('Set DATABASE_URL for deployment. SQLite is local-development only.')
 
