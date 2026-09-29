@@ -12,7 +12,9 @@
       "src": "api/index.py",
       "use": "@vercel/python",
       "config": {
-        "excludeFiles": "{frontend/**,node_modules/**,docs/**,.venv/**}"
+        "maxDuration": 30,
+        "memory": 1024,
+        "excludeFiles": "{frontend/**,node_modules/**,docs/**,.venv/**,backend/media/**,backend/dist/**,backend/staticfiles/**,**/*.sqlite3,**/*.pyc,**/__pycache__/**}"
       }
     }
   ],
@@ -24,6 +26,27 @@
     {
       "src": "/media(?:/.*)?",
       "dest": "/api/index.py"
+    },
+    {
+      "src": "/assets/(.*)",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      },
+      "continue": true
+    },
+    {
+      "src": "/(.*\\.(?:ico|png|jpg|jpeg|svg|webp|woff|woff2|ttf))$",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      },
+      "continue": true
+    },
+    {
+      "src": "^/index\\.html$",
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate"
+      },
+      "continue": true
     },
     {
       "handle": "filesystem"
@@ -38,7 +61,11 @@
     },
     {
       "src": "/.*",
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate"
+      },
       "dest": "/index.html"
     }
   ]
 }
+

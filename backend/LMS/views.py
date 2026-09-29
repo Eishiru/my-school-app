@@ -1,6 +1,5 @@
 import os
 import mimetypes
-import pandas as pd
 from django.db import transaction
 from django.utils import timezone
 
@@ -636,6 +635,7 @@ def import_students_excel(request):
         return Response({"detail": "Excel file is required"}, status=400)
 
     try:
+        import pandas as pd
         df = pd.read_excel(file)
     except Exception as e:
         return Response({"detail": f"Invalid Excel file: {e}"}, status=400)
@@ -1039,11 +1039,18 @@ class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelView
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        if self.request.user.role == 'TEACHER':
-            quizzes = Quiz.objects.filter(teacher=self.request.user)
-            Quiz.sync_statuses(quizzes)
-            return quizzes.order_by('-created_at')
-        return Quiz.objects.none()
+        if self.request.user.role != "TEACHER":
+            return Quiz.objects.none()
+
+        quizzes = Quiz.objects.filter(teacher=self.request.user)
+        Quiz.sync_statuses(quizzes)
+
+        return (
+            quizzes
+            .select_related("teacher", "SubjectOffering", "semester")
+            .prefetch_related("questions__choices", "attempts")
+            .order_by("-created_at")
+        )
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
