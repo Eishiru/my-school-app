@@ -74,6 +74,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         <MobileDrawer
           links={activeLinks}
           onClose={onClose}
+          user={user}
+          onLogout={handleLogout}
         />
       )}
     </>
