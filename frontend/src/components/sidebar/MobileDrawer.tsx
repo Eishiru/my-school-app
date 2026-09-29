@@ -41,7 +41,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
         className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
       />
 
-      <aside className="fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl flex flex-col">
+      <aside className="fixed inset-y-0 left-0 z-50 w-72 h-full bg-white shadow-2xl flex flex-col">
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-100 px-6">
           <SidebarLogo />
 
@@ -55,7 +55,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-2">
+        <nav className="flex-1 min-h-0 overflow-y-auto p-2">
           <SidebarNavigation
             links={links}
             onNavigate={onClose}
@@ -63,7 +63,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
         </nav>
         
         {/* User / Logout */}
-        <div className="shrink-0 border-t border-slate-100 bg-slate-50/60 p-3">
+        <div className="shrink-0 border-t-2 border-slate-200 bg-slate-50 p-4 pb-safe">
           <UserMenu
             user={user}
             variant="mobile"
