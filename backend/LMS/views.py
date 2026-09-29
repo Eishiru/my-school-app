@@ -1,6 +1,5 @@
 import os
 import mimetypes
-import pandas as pd
 from django.db import transaction
 from django.utils import timezone
 
@@ -636,6 +635,7 @@ def import_students_excel(request):
         return Response({"detail": "Excel file is required"}, status=400)
 
     try:
+        import pandas as pd
         df = pd.read_excel(file)
     except Exception as e:
         return Response({"detail": f"Invalid Excel file: {e}"}, status=400)
