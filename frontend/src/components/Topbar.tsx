@@ -1,6 +1,6 @@
 import React from "react";
-import { useLocation } from "react-router-dom";
-import { Menu, Calendar, Shield, GraduationCap, User as UserIcon } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Menu, Calendar, Shield, GraduationCap, User as UserIcon, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useActiveAcademicTerm } from "../hooks/useAdminData";
 import { SchoolLogo } from "./SchoolLogo";
@@ -11,9 +11,15 @@ interface TopbarProps {
 }
 
 export default function Topbar({ onOpenMobileSidebar, isDesktop }: TopbarProps) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const { data: activeTerm } = useActiveAcademicTerm();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   // Determine friendly page title from path
   const getPageTitle = (path: string) => {
@@ -124,14 +130,19 @@ export default function Topbar({ onOpenMobileSidebar, isDesktop }: TopbarProps) 
         {/* Role Pill */}
         {getRoleBadge()}
 
-        {/* User initials bubble */}
+        {/* User initials bubble and Logout */}
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white shadow-xs">
             {user?.first_name ? user.first_name.charAt(0).toUpperCase() : "U"}
           </div>
-          {/* <span className="hidden text-xs font-semibold text-slate-700 md:inline-block">
-            {user?.first_name} {user?.last_name}
-          </span> */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Sign Out"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors focus:outline-none"
+          >
+            <LogOut size={18} strokeWidth={2} />
+          </button>
         </div>
       </div>
     </header>
