@@ -139,9 +139,10 @@ export default function Topbar({ onOpenMobileSidebar, isDesktop }: TopbarProps) 
             type="button"
             onClick={handleLogout}
             title="Sign Out"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors focus:outline-none"
+            className="flex items-center gap-2 rounded-lg p-1.5 sm:px-3 sm:py-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors focus:outline-none"
           >
-            <LogOut size={18} strokeWidth={2} />
+            <LogOut size={18} strokeWidth={2.5} />
+            <span className="hidden sm:inline-block text-sm font-semibold">Sign Out</span>
           </button>
         </div>
       </div>
