@@ -8,7 +8,7 @@ __pycache__/
 .env.*
 !.env.example
 dist/
-staticfiles/
+# backend/staticfiles is intentionally committed so Vercel can serve Django static files via WhiteNoise
 media/
 *.sqlite3
 *.db

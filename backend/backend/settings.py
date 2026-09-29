@@ -211,9 +211,15 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise serves Django's own static files (admin, DRF browsable API).
+# On Vercel the frontend is served by CDN; Django static files are minimal.
+# Use CompressedStaticFilesStorage (no manifest required) to avoid crashes
+# when collectstatic hasn't been run in this environment.
+_whitenoise_backend = 'whitenoise.storage.CompressedStaticFilesStorage'
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+    'staticfiles': {'BACKEND': _whitenoise_backend},
 }
 
 # Default primary key field type

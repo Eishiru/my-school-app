@@ -14,7 +14,7 @@
       "config": {
         "maxDuration": 30,
         "memory": 1024,
-        "excludeFiles": "{frontend/**,node_modules/**,docs/**,.venv/**,backend/media/**,backend/dist/**,backend/staticfiles/**,**/*.sqlite3,**/*.pyc,**/__pycache__/**}"
+        "excludeFiles": "{frontend/**,frontend/node_modules/**,docs/**,.venv/**,backend/media/**,backend/dist/**,**/*.sqlite3,**/*.pyc,**/__pycache__/**}"
       }
     }
   ],
@@ -68,4 +68,3 @@
     }
   ]
 }
-

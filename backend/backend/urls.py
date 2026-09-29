@@ -3,14 +3,15 @@ from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.urls import include, path
 
+
 def health(request):
     return JsonResponse({'status': 'ok'})
+
 
 urlpatterns = [
     path('health/', health),
     path('api/health/', health),
     path('api/', include('LMS.urls')),
-    path('', include('LMS.urls')),
 ]
 
 if settings.DEBUG:
