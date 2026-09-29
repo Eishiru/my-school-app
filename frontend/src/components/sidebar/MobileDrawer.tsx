@@ -1,9 +1,8 @@
 import React from "react";
-import { X } from "lucide-react";
+import { X, LogOut } from "lucide-react";
 
 import SidebarLogo from "./SidebarLogo";
 import SidebarNavigation from "./SidebarNavigation";
-import UserMenu from "./UserMenu";
 
 interface NavigationItem {
   name: string;
@@ -62,13 +61,16 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
           />
         </nav>
         
-        {/* User / Logout */}
+        {/* Simple Logout Button */}
         <div className="shrink-0 border-t-2 border-slate-200 bg-slate-50 p-4 pb-safe">
-          <UserMenu
-            user={user}
-            variant="mobile"
-            onLogout={onLogout}
-          />
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-100 active:bg-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
+          >
+            <LogOut size={18} strokeWidth={2.5} />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
     </>
