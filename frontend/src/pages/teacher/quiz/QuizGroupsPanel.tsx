@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../../../api/config";
 import { useEffect, useMemo, useState } from 'react';
 
 type Student = { id: number; name: string };
@@ -12,8 +13,7 @@ async function groupsRequest(quizId: number, method: 'GET' | 'PUT', body?: unkno
   const saved = localStorage.getItem('user');
   const token = saved ? JSON.parse(saved).token : null;
   if (!token) throw new Error('Please sign in again to manage groups.');
-  const base = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-  const api = base.endsWith('/api') ? base : `${base}/api`;
+  const api = API_BASE_URL;
   const response = await fetch(`${api}/teacher/quizzes/${quizId}/groups/`, {
     method, signal, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),

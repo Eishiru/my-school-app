@@ -603,7 +603,7 @@ export default function TeacherQuizList() {
               aria-label="Filter activities by subject"
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer max-w-[160px] truncate"
+              className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer max-w-40 truncate"
             >
               <option value="ALL">All Subjects</option>
               {teacherSubjects.map((sub) => (

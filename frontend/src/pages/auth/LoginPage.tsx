@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../../api/config";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -29,7 +30,7 @@ export const LoginPage = () => {
     }
 
     try {
-      const res = await axios.post("http://127.0.0.1:8000/api/token/", {
+      const res = await axios.post(`${API_BASE_URL}/token/`, {
         email,
         password,
       });
