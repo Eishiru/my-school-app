@@ -281,23 +281,25 @@ class QuarterlyGrade(models.Model):
         help_text="Required for new semester grades; null only for legacy quarterly records.",
     )
     
-    # Component scores (raw scores, not weighted)
+    # Component scores (raw scores, not weighted - 0.0 default indicates unadministered)
     written_work_score = models.FloatField(default=0.0, help_text="Total WW score")
-    written_work_total = models.FloatField(default=100.0, help_text="Total possible WW points")
+    written_work_total = models.FloatField(default=0.0, help_text="Total possible WW points")
     
     performance_task_score = models.FloatField(default=0.0, help_text="Total PT score")
-    performance_task_total = models.FloatField(default=100.0, help_text="Total possible PT points")
+    performance_task_total = models.FloatField(default=0.0, help_text="Total possible PT points")
     
     quarterly_assessment_score = models.FloatField(default=0.0, help_text="Quarterly exam score")
-    quarterly_assessment_total = models.FloatField(default=100.0, help_text="Total possible QA points")
+    quarterly_assessment_total = models.FloatField(default=0.0, help_text="Total possible QA points")
     
     # Weights (default: 40-40-20)
     ww_weight = models.FloatField(default=0.40, help_text="Written Work weight (0-1)")
     pt_weight = models.FloatField(default=0.40, help_text="Performance Task weight (0-1)")
     qa_weight = models.FloatField(default=0.20, help_text="Quarterly Assessment weight (0-1)")
     
-    # Calculated final grade
-    final_grade = models.FloatField(default=0.0, help_text="Weighted final grade (0-100)")
+    # Calculated grades (DepEd Order No. 8, s. 2015)
+    initial_grade = models.FloatField(default=0.0, help_text="Initial raw weighted score (0-100)")
+    transmuted_grade = models.FloatField(default=0.0, help_text="DepEd transmuted grade (60-100)")
+    final_grade = models.FloatField(default=0.0, help_text="Official final grade (DepEd transmuted grade, 60-100)")
     
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
@@ -323,14 +325,38 @@ class QuarterlyGrade(models.Model):
         ordering = ['student', 'SubjectOffering', 'quarter']
     
     def calculate_final_grade(self):
-        """Calculate weighted final grade from component scores"""
-        # Convert to percentages
-        ww_pct = (self.written_work_score / self.written_work_total * 100) if self.written_work_total > 0 else 0
-        pt_pct = (self.performance_task_score / self.performance_task_total * 100) if self.performance_task_total > 0 else 0
-        qa_pct = (self.quarterly_assessment_score / self.quarterly_assessment_total * 100) if self.quarterly_assessment_total > 0 else 0
-        
-        # Apply weights
-        self.final_grade = (ww_pct * self.ww_weight) + (pt_pct * self.pt_weight) + (qa_pct * self.qa_weight)
+        """
+        Calculate raw initial grade and DepEd transmuted final grade from component scores.
+        Dynamically normalizes weights among active (administered) components so that
+        unadministered components (total_points == 0) do not artificially fail students.
+        """
+        from .grading_utils import deped_transmute
+
+        components = []
+        if self.written_work_total > 0:
+            ww_pct = (self.written_work_score / self.written_work_total) * 100.0
+            components.append((ww_pct, self.ww_weight))
+
+        if self.performance_task_total > 0:
+            pt_pct = (self.performance_task_score / self.performance_task_total) * 100.0
+            components.append((pt_pct, self.pt_weight))
+
+        if self.quarterly_assessment_total > 0:
+            qa_pct = (self.quarterly_assessment_score / self.quarterly_assessment_total) * 100.0
+            components.append((qa_pct, self.qa_weight))
+
+        active_weight = sum(w for _, w in components)
+
+        if active_weight > 0:
+            weighted_sum = sum(pct * w for pct, w in components)
+            self.initial_grade = round(weighted_sum / active_weight, 2)
+            self.transmuted_grade = float(deped_transmute(self.initial_grade) or 60.0)
+            self.final_grade = self.transmuted_grade
+        else:
+            self.initial_grade = 0.0
+            self.transmuted_grade = 0.0
+            self.final_grade = 0.0
+
         return self.final_grade
     
     def save(self, *args, **kwargs):
@@ -339,7 +365,7 @@ class QuarterlyGrade(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.student.user.email} - {self.SubjectOffering.name} - {self.semester or self.quarter}: {self.final_grade:.2f}%"
+        return f"{self.student.user.email} - {self.SubjectOffering.name} - {self.semester or self.quarter}: {self.final_grade:.0f} (Initial: {self.initial_grade:.2f}%)"
     
 class Quiz(models.Model):
     STATUS_CHOICES = [
@@ -622,7 +648,7 @@ class QuizTopicPerformance(models.Model):
 
 
 class GradeForecast(models.Model):
-    """Stores AI-generated grade predictions for students"""
+    """Stores AI/ML-generated grade predictions for students"""
     RISK_LEVELS = [
         ('LOW', 'Low Risk'),
         ('MEDIUM', 'Medium Risk'),
@@ -634,24 +660,45 @@ class GradeForecast(models.Model):
         ('STABLE', 'Stable'),
         ('DECLINING', 'Declining'),
     ]
+
+    CHECKPOINT_CHOICES = [
+        ('CURRENT', 'Current Progress'),
+        ('EARLY', 'Early Semester'),
+        ('MID', 'Mid Semester'),
+        ('LATE', 'Late Semester'),
+    ]
     
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="grade_forecasts")
     SubjectOffering = models.ForeignKey(SubjectOffering, on_delete=models.CASCADE, related_name="grade_forecasts")
+    semester = models.ForeignKey(Semester, on_delete=models.CASCADE, null=True, blank=True, related_name="grade_forecasts")
+    checkpoint = models.CharField(max_length=20, choices=CHECKPOINT_CHOICES, default='CURRENT', help_text="Forecasting checkpoint")
     
     # Current performance metrics
-    current_average = models.FloatField(help_text="Current average quiz score")
+    current_average = models.FloatField(help_text="Current average quiz/activity score")
     quiz_count = models.IntegerField(default=0, help_text="Number of quizzes taken")
     
-    # AI Predictions
-    predicted_grade = models.FloatField(help_text="AI predicted final grade (0-100)")
-    confidence_score = models.FloatField(default=0.0, help_text="AI confidence in prediction (0-1)")
+    # Model Predictions
+    model_name = models.CharField(max_length=50, default='Gradient Boosting', help_text="Name of the regression model used")
+    predicted_grade = models.FloatField(help_text="Predicted final grade (0-100)")
+    baseline_grade = models.FloatField(default=0.0, help_text="Baseline prediction using current grade")
+    confidence_score = models.FloatField(default=0.0, help_text="Confidence in prediction (0-1)")
     risk_level = models.CharField(max_length=20, choices=RISK_LEVELS)
     performance_trend = models.CharField(max_length=20, choices=TREND_CHOICES)
     
+    # Snapshot of the 9 input features used for this forecast
+    features = models.JSONField(default=dict, blank=True, help_text="Feature vector snapshot at forecast time")
+
+    # Comparisons across Baseline, Linear Regression, Random Forest, Gradient Boosting
+    model_comparisons = models.JSONField(default=dict, blank=True, help_text="Comparative predictions across all 4 regression models")
+
+    # Ground truth evaluation (populated once semester is completed)
+    actual_grade = models.FloatField(null=True, blank=True, help_text="Actual final semester grade for verification")
+    error = models.FloatField(null=True, blank=True, help_text="Prediction error: actual_grade - predicted_grade")
+
     # Analysis details
     strong_topics = models.JSONField(default=list, help_text="List of topics student excels in")
     weak_topics = models.JSONField(default=list, help_text="List of topics needing improvement")
-    recommendations = models.TextField(blank=True, help_text="AI-generated study recommendations")
+    recommendations = models.TextField(blank=True, help_text="Study recommendations")
     
     # Metadata
     generated_at = models.DateTimeField(auto_now_add=True)
@@ -659,10 +706,34 @@ class GradeForecast(models.Model):
     
     class Meta:
         ordering = ['-generated_at']
-        unique_together = ['student', 'SubjectOffering']
+        unique_together = ['student', 'SubjectOffering', 'checkpoint']
     
     def __str__(self):
-        return f"{self.student.user.email} - {self.SubjectOffering.name}: {self.predicted_grade}%"
+        return f"{self.student.user.email} - {self.SubjectOffering.name} [{self.checkpoint}]: {self.predicted_grade:.1f}% ({self.model_name})"
+
+
+class ForecastingModelMetric(models.Model):
+    """
+    Stores testing and evaluation metrics for comparing regression models
+    (Baseline, Linear Regression, Random Forest, Gradient Boosting)
+    across Overall, Checkpoints (Early/Mid/Late), and Semesters (SEM1/SEM2/SEM3).
+    """
+    model_name = models.CharField(max_length=50) # 'Baseline', 'Linear Regression', 'Random Forest', 'Gradient Boosting'
+    checkpoint = models.CharField(max_length=20, default='OVERALL') # 'OVERALL', 'EARLY', 'MID', 'LATE'
+    semester = models.CharField(max_length=20, default='ALL') # 'ALL', 'SEM1', 'SEM2', 'SEM3'
+    split_type = models.CharField(max_length=20, default='TEST') # 'TRAIN', 'VAL', 'TEST'
+    mae = models.FloatField(help_text="Mean Absolute Error in grade points")
+    rmse = models.FloatField(help_text="Root Mean Squared Error")
+    r2 = models.FloatField(help_text="R-squared score")
+    sample_count = models.IntegerField(default=0)
+    is_best_model = models.BooleanField(default=False)
+    trained_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-trained_at', 'checkpoint', 'model_name']
+
+    def __str__(self):
+        return f"{self.model_name} [{self.checkpoint}/{self.semester}] - MAE: {self.mae:.2f}, RMSE: {self.rmse:.2f}, R²: {self.r2:.3f}"
 
 class Grade(models.Model):
     grade_id = models.CharField(max_length=50, unique=True)
