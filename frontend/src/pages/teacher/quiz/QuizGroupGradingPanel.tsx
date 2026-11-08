@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../../../api/config";
 import { useEffect, useRef, useState } from 'react';
 
 type Question = { id: number; text: string; points: number };
@@ -11,8 +12,7 @@ async function requestGrades(quizId: number, body?: unknown, signal?: AbortSigna
   const stored = localStorage.getItem('user');
   const token = stored ? JSON.parse(stored).token : null;
   if (!token) throw new Error('Please sign in again to grade groups.');
-  const base = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-  const api = base.endsWith('/api') ? base : `${base}/api`;
+  const api = API_BASE_URL;
   const response = await fetch(`${api}/teacher/quizzes/${quizId}/group-grading/`, {
     method: body === undefined ? 'GET' : 'PUT', signal,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

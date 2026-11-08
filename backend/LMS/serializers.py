@@ -112,7 +112,7 @@ class UserSerializer(serializers.ModelSerializer):
     def get_subjects(self, obj):
         if obj.role != "TEACHER":
             return []
-        return obj.subjects.values("id", "name")
+        return [{"id": s.id, "name": s.name} for s in obj.subjects.all()]
     
     def validate(self, data):
         role = data.get("role") or getattr(self.instance, "role", None)
@@ -219,7 +219,7 @@ class SectionSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    student_count = serializers.IntegerField(source="students.count", read_only=True)
+    student_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Section
@@ -235,6 +235,11 @@ class SectionSerializer(serializers.ModelSerializer):
 
         return section
     
+    def get_student_count(self, obj):
+        if hasattr(obj, "student_count_annotated"):
+            return obj.student_count_annotated
+        return obj.students.count()
+
     def get_adviser_name(self, obj):
         if obj.adviser:
             return f"{obj.adviser.first_name} {obj.adviser.last_name}"
@@ -786,6 +791,8 @@ class StudentQuizSerializer(serializers.ModelSerializer):
         ]
     
     def get_question_count(self, obj):
+        if hasattr(obj, "question_count_annotated"):
+            return obj.question_count_annotated
         return obj.questions.count()
     
     def get_teacher_name(self, obj):
@@ -796,6 +803,8 @@ class StudentQuizSerializer(serializers.ModelSerializer):
         return name if name else obj.teacher.email
     
     def get_user_attempts(self, obj):
+        if hasattr(obj, "user_attempts_annotated"):
+            return obj.user_attempts_annotated
         request = self.context.get('request')
         if request and hasattr(request.user, 'student_profile'):
             return obj.attempts.filter(student=request.user.student_profile).count()
