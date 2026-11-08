@@ -1,13 +1,18 @@
 """
 Grade Forecasting Service
-Analyzes quiz performance and generates AI-powered grade predictions
+Analyzes quiz performance and generates AI-assisted grade predictions
+using the trained DepEd-aligned Gradient Boosting ML engine.
 """
 
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from datetime import timedelta
-from .models import QuizAttempt, QuizAnswer, QuizTopicPerformance, GradeForecast, Student, Subject, Quiz, SubjectOffering
+from .models import (
+    QuizAttempt, QuizAnswer, QuizTopicPerformance, GradeForecast,
+    Student, Subject, Quiz, SubjectOffering
+)
 from .ai_service import AIService
+from .ml.forecaster import GradeForecaster
 
 
 class GradeAnalyticsService:
@@ -15,6 +20,7 @@ class GradeAnalyticsService:
     
     def __init__(self):
         self.ai_service = AIService()
+        self.ml_forecaster = GradeForecaster()
     
     def get_student_quiz_data(self, student_id, SubjectOffering_id=None):
         """
@@ -106,18 +112,15 @@ class GradeAnalyticsService:
         answers_query = QuizAnswer.objects.filter(
             attempt__student=student,
             attempt__status='GRADED',
-            question__question_type__in=['MULTIPLE_CHOICE', 'TRUE_FALSE']  # Only auto-graded
+            question__question_type__in=['MULTIPLE_CHOICE', 'TRUE_FALSE']
         ).select_related('question__quiz')
         
         if SubjectOffering_id:
             answers_query = answers_query.filter(attempt__quiz__SubjectOffering_id=SubjectOffering_id)
         
-        # Group by quiz title as "topic" (you can enhance this with actual topic field)
         topic_stats = {}
-        
         for answer in answers_query:
-            topic = answer.question.quiz.title  # Using quiz title as topic
-            
+            topic = answer.question.quiz.title
             if topic not in topic_stats:
                 topic_stats[topic] = {'correct': 0, 'total': 0}
             
@@ -125,7 +128,6 @@ class GradeAnalyticsService:
             if answer.is_correct:
                 topic_stats[topic]['correct'] += 1
         
-        # Convert to list format with accuracy
         performance_list = []
         for topic, stats in topic_stats.items():
             accuracy = (stats['correct'] / stats['total'] * 100) if stats['total'] > 0 else 0
@@ -136,9 +138,7 @@ class GradeAnalyticsService:
                 'total': stats['total']
             })
         
-        # Sort by accuracy (descending)
         performance_list.sort(key=lambda x: x['accuracy'], reverse=True)
-        
         return performance_list
     
     def update_topic_performance_records(self, student_id, SubjectOffering_id):
@@ -150,10 +150,8 @@ class GradeAnalyticsService:
             return False
         
         topic_data = self._calculate_topic_performance(student, SubjectOffering_id)
-        
-        # Update or create records
         for topic_info in topic_data:
-            obj, created = QuizTopicPerformance.objects.update_or_create(
+            QuizTopicPerformance.objects.update_or_create(
                 student=student,
                 SubjectOffering=offering,
                 topic=topic_info['topic'],
@@ -163,58 +161,31 @@ class GradeAnalyticsService:
                     'accuracy_percentage': topic_info['accuracy']
                 }
             )
-        
         return True
     
     def generate_forecast(self, student_id, SubjectOffering_id):
         """
-        Generate or update grade forecast using AI
-        
-        Args:
-            student_id: Student ID
-            SubjectOffering_id: Subject ID
-        
-        Returns:
-            GradeForecast object or None
+        Generate or update grade forecast using the trained ML GradeForecaster.
+        Enforces DepEd component eligibility barrier and returns the persisted GradeForecast.
         """
-        # Get student data
-        student_data = self.get_student_quiz_data(student_id, SubjectOffering_id)
-        
-        if not student_data or student_data['quiz_count'] < 1:
-            return None  # Need at least 1 quiz for prediction
-        
         try:
-            subject = SubjectOffering.objects.get(id=SubjectOffering_id)
-        except SubjectOffering.DoesNotExist:
+            student = Student.objects.get(id=student_id)
+            offering = SubjectOffering.objects.get(id=SubjectOffering_id)
+        except (Student.DoesNotExist, SubjectOffering.DoesNotExist):
             return None
         
-        # Add subject name for AI context
-        student_data['subject_name'] = subject.name
+        # Execute ML prediction pipeline
+        res = self.ml_forecaster.predict_for_student(student, offering)
         
-        # Call AI service for prediction
-        ai_prediction = self.ai_service.predict_grade(student_data)
-        
-        # Update topic performance records
+        # Sync topic performances for diagnostics
         self.update_topic_performance_records(student_id, SubjectOffering_id)
         
-        # Create or update forecast record
-        forecast, created = GradeForecast.objects.update_or_create(
-            student=student_data['student'],
-            SubjectOffering=SubjectOffering.objects.get(id=SubjectOffering_id),
-            defaults={
-                'current_average': student_data['current_average'],
-                'quiz_count': student_data['quiz_count'],
-                'predicted_grade': ai_prediction['predicted_grade'],
-                'confidence_score': ai_prediction['confidence'],
-                'risk_level': ai_prediction['risk_level'],
-                'performance_trend': ai_prediction['trend'],
-                'strong_topics': ai_prediction['strong_topics'],
-                'weak_topics': ai_prediction['weak_topics'],
-                'recommendations': ai_prediction['recommendations']
-            }
-        )
-        
-        return forecast
+        if res.get('eligible', False):
+            try:
+                return GradeForecast.objects.get(id=res['id'])
+            except GradeForecast.DoesNotExist:
+                return None
+        return None
     
     def get_all_student_forecasts(self, student_id):
         """Get all subject forecasts for a student"""
@@ -223,4 +194,4 @@ class GradeAnalyticsService:
         except Student.DoesNotExist:
             return []
         
-        return GradeForecast.objects.filter(student=student).select_related('Subject')
+        return GradeForecast.objects.filter(student=student).select_related('SubjectOffering')
