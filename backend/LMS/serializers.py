@@ -1013,10 +1013,10 @@ class QuarterlyGradeSerializer(serializers.ModelSerializer):
             'performance_task_score', 'performance_task_total',
             'quarterly_assessment_score', 'quarterly_assessment_total',
             'ww_weight', 'pt_weight', 'qa_weight',
-            'initial_grade', 'transmuted_grade', 'final_grade', 'remarks',
+            'final_grade', 'remarks',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['initial_grade', 'transmuted_grade', 'final_grade', 'created_at', 'updated_at']
+        read_only_fields = ['final_grade', 'created_at', 'updated_at']
     
     def get_student_name(self, obj):
         """Get student's full name"""

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import {
   useTeacherSubjectGrades,
@@ -191,36 +190,6 @@ export default function SubjectGradesTab() {
             3rd Semester
           </option>
         </select>
-      </div>
-
-      {/* AI Grade Forecasting Early Warning Banner */}
-      <div className="rounded-xl border border-indigo-200/90 bg-indigo-50/60 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-indigo-600 p-2 text-white shrink-0 shadow-2xs">
-            <Sparkles size={18} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                AI Grade Forecasting & Early Warning Active
-              </h3>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                DepEd Trajectory Model
-              </span>
-            </div>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Identify students projected to be at academic risk (&lt; 75%) before quarterly marks are finalized.
-            </p>
-          </div>
-        </div>
-
-        <Link
-          to={`/teacher/subject/${subjectId}/analytics`}
-          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition shadow-2xs shrink-0"
-        >
-          <span>View Forecasts & At-Risk Roster</span>
-          <span>→</span>
-        </Link>
       </div>
 
       {/* Grades Table */}

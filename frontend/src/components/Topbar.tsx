@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { Menu, Calendar, Shield, GraduationCap, User as UserIcon, LogOut, ChevronDown } from "lucide-react";
+import React from "react";
+import { useLocation } from "react-router-dom";
+import { Menu, Calendar, Shield, GraduationCap, User as UserIcon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useActiveAcademicTerm } from "../hooks/useAdminData";
 import { SchoolLogo } from "./SchoolLogo";
@@ -11,9 +11,8 @@ interface TopbarProps {
 }
 
 export default function Topbar({ onOpenMobileSidebar, isDesktop }: TopbarProps) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const { data: activeTerm } = useActiveAcademicTerm();
 
   // Determine friendly page title from path
