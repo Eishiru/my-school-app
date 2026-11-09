@@ -6,14 +6,12 @@ import {
   Minus,
   AlertTriangle,
   CheckCircle2,
-  XCircle,
   Lightbulb,
   Award,
   Target,
   Compass,
   Layers,
-  ShieldAlert,
-  Info,
+  Clock,
 } from 'lucide-react';
 import type { StudentGradeForecast } from '../../types/studentTypes';
 
@@ -32,23 +30,67 @@ export default function GradeForecastCard({
 }: GradeForecastCardProps) {
   if (isLoading) {
     return (
-      <div className={`rounded-xl border border-indigo-100 bg-indigo-50/30 p-6 ${className}`}>
+      <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-xs ${className}`}>
         <div className="flex items-center gap-3">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-          <p className="text-xs font-semibold text-slate-600">
-            Analyzing student assessment trajectory and generating AI forecast...
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <p className="text-xs font-medium text-slate-600">
+            Checking your grades and activities...
           </p>
         </div>
       </div>
     );
   }
 
-  if (!forecast) {
-    return null;
+  // Check if forecaster has sufficient graded activity data
+  const isEligible = forecast ? (forecast.eligible ?? forecast.is_eligible ?? true) : false;
+
+  // ===================== STATE 1: AWAITING ACTIVITIES (SIMPLE & CLEAR) =====================
+  if (!forecast || !isEligible) {
+    return (
+      <div
+        className={`rounded-xl border border-slate-200 bg-white p-5 text-left shadow-xs transition-all ${className}`}
+      >
+        <div className="flex items-start gap-3.5">
+          <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600 shrink-0 mt-0.5">
+            <Sparkles size={20} />
+          </div>
+
+          <div className="space-y-1.5 flex-1 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <span>Grade Forecast</span>
+                {subjectName && (
+                  <span className="text-xs font-normal text-slate-500">({subjectName})</span>
+                )}
+              </h3>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                <Clock size={12} />
+                Awaiting Activities
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Your AI grade forecast will appear here once you have graded activities in this subject. Keep submitting your tasks on time!
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-500">
+              <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 font-medium text-slate-600">
+                Written Works
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 font-medium text-slate-600">
+                Performance Tasks
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 font-medium text-slate-600">
+                Quarterly Exam
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // Check if forecaster is dormant / ineligible
-  const isEligible = forecast.eligible ?? forecast.is_eligible ?? true;
+  // ===================== STATE 2: OPERATIONAL FORECAST =====================
   const predictedGrade = forecast.predicted_grade ?? 75.0;
   const descriptor = forecast.performance_descriptor || getDescriptorFallback(predictedGrade);
   const riskLevel = forecast.risk_level || 'LOW';
@@ -139,61 +181,6 @@ export default function GradeForecastCard({
   }
 
   const descMeta = getDescriptorBadge(descriptor);
-
-  // ===================== STATE 1: INELIGIBLE / DORMANT =====================
-  if (!isEligible) {
-    return (
-      <div
-        className={`rounded-xl border border-amber-200/80 bg-amber-50/40 p-5 text-left transition-all ${className}`}
-      >
-        <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-amber-100 p-2 text-amber-700 shrink-0 mt-0.5">
-            <ShieldAlert size={20} />
-          </div>
-
-          <div className="space-y-2 flex-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
-                  AI Grade Forecasting Dormant
-                </h3>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">
-                  Awaiting DepEd Baseline
-                </span>
-              </div>
-              <span className="text-[10px] font-mono font-medium text-amber-700">
-                Minimum Eligibility Barrier Active
-              </span>
-            </div>
-
-            <p className="text-xs text-amber-900 leading-relaxed">
-              To guarantee mathematical accuracy and prevent distorted early projections, the
-              forecasting engine requires at least <strong>1 graded Written Work (WW)</strong>,{' '}
-              <strong>1 Performance Task (PT)</strong>, and{' '}
-              <strong>1 Summative Assessment / Exam (FA)</strong>.
-            </p>
-
-            {forecast.reason && (
-              <div className="rounded-lg bg-white/70 border border-amber-200/60 p-2.5 text-xs text-amber-950">
-                <span className="font-semibold text-amber-900">Current Status: </span>
-                {forecast.reason}
-              </div>
-            )}
-
-            <div className="flex items-center gap-1.5 pt-1 text-[11px] text-amber-800 font-medium">
-              <Info size={13} className="text-amber-600 shrink-0" />
-              <span>
-                Forecasting will activate automatically once your teacher records submissions across
-                all 3 assessment components.
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ===================== STATE 2: OPERATIONAL FORECAST =====================
   const confidencePercent = Math.round((forecast.confidence_score ?? 0.85) * 100);
   const strongTopics = forecast.strong_topics || [];
   const weakTopics = forecast.weak_topics || [];
@@ -216,15 +203,12 @@ export default function GradeForecastCard({
               )}
             </h3>
             <p className="text-[11px] text-slate-500">
-              Curricular Trajectory Model • DepEd Order No. 8, s. 2015
+              Projected Final Performance • DepEd Order No. 8, s. 2015
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100/80 text-indigo-800 border border-indigo-200/60">
-            {forecast.model_name || 'Gradient Boosting Regressor'}
-          </span>
           <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
             Advisory Only
           </span>
@@ -300,7 +284,7 @@ export default function GradeForecastCard({
         </div>
       </div>
 
-      {/* Topic Performance Evidence Grid (Figure 4.11 in Capstone Defense) */}
+      {/* Topic Performance Evidence Grid */}
       {(strongTopics.length > 0 || weakTopics.length > 0) && (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Strong Competencies */}
@@ -334,7 +318,7 @@ export default function GradeForecastCard({
             <div className="flex items-center gap-1.5 mb-2">
               <AlertTriangle size={14} className="text-amber-600" />
               <span className="text-[11px] font-bold uppercase tracking-wider text-amber-950">
-                Areas for Focus & Remediation
+                Areas for Focus & Practice
               </span>
             </div>
             {weakTopics.length > 0 ? (
@@ -350,7 +334,7 @@ export default function GradeForecastCard({
               </div>
             ) : (
               <p className="text-[11px] text-amber-800 italic">
-                No acute failure vulnerabilities detected.
+                No major weak areas detected.
               </p>
             )}
           </div>

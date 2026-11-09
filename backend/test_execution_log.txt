@@ -1,0 +1,138 @@
+========================================================================================
+ CLAROED SYSTEM - COMPREHENSIVE FUNCTIONAL VERIFICATION SUITE
+ DepEd Order No. 8, s. 2015 | ISO/IEC 25010:2023 | 102 Test Cases
+ Execution Timestamp: 2026-11-10 01:59:57
+========================================================================================
+
+
+>>> MODULE 1: USER & ACADEMIC STRUCTURE MANAGEMENT (FR-01) [12 TEST CASES]
+  [PASS] TC-UAM-01: Admin user creation with valid credential attributes (525.2ms)
+  [PASS] TC-UAM-02: Duplicate email constraint enforcement (431.9ms)
+  [PASS] TC-UAM-03: PBKDF2 password hash verification (1122.2ms)
+  [PASS] TC-UAM-04: Invalid password authentication rejection (1121.3ms)
+  [PASS] TC-UAM-05: School / Academic Year boundary date and naming validation (0.2ms)
+  [PASS] TC-UAM-06: Active Academic Semester status toggle (0.0ms)
+  [PASS] TC-UAM-07: Grade Level & Section hierarchy setup (Grades 7 to 10) (0.0ms)
+  [PASS] TC-UAM-08: Student enrollment & section membership binding (0.1ms)
+  [PASS] TC-UAM-09: Teacher faculty profile and role association (0.0ms)
+  [PASS] TC-UAM-10: Subject Offering linking Subject, Section, and Teacher (0.1ms)
+  [PASS] TC-UAM-11: Role boundary enforcement (student forbidden from administrative setup) (0.0ms)
+  [PASS] TC-UAM-12: Cryptographic salt & one-way password encryption verification (586.9ms)
+
+>>> MODULE 2: LEARNING MATERIAL MANAGEMENT (FR-02) [11 TEST CASES]
+  [PASS] TC-LMM-01: Learning material module creation with instructional objectives (0.1ms)
+  [PASS] TC-LMM-02: Document attachment verification (PDF, DOCX formats) (0.0ms)
+  [PASS] TC-LMM-03: Learning material association with specific Subject Offering (0.1ms)
+  [PASS] TC-LMM-04: Publication status toggle and file presence verification (0.0ms)
+  [PASS] TC-LMM-05: Enrolled student access authorization to published materials (0.0ms)
+  [PASS] TC-LMM-06: Non-enrolled student material access restriction (0.0ms)
+  [PASS] TC-LMM-07: External resource URL validation (HTTPS URI formatting) (0.0ms)
+  [PASS] TC-LMM-08: Attachment size boundary validation (reject files > 25MB) (0.0ms)
+  [PASS] TC-LMM-09: Disallowed executable file type rejection (.exe, .sh, .bat) (0.0ms)
+  [PASS] TC-LMM-10: Material soft/hard deletion by owning faculty (0.0ms)
+  [PASS] TC-LMM-11: Cross-teacher material modification block (IDOR protection) (0.0ms)
+
+>>> MODULE 3: LEARNING ACTIVITY & SUBMISSION TRACKING (FR-03, FR-04) [16 TEST CASES]
+  [PASS] TC-ACT-01: Activity creation with title, deadline, and total score points (0.1ms)
+  [PASS] TC-ACT-02: DepEd component classification: Written Works (WW) (0.0ms)
+  [PASS] TC-ACT-03: DepEd component classification: Performance Tasks (PT) (0.0ms)
+  [PASS] TC-ACT-04: DepEd component classification: Quarterly Exam (QA/EX) (0.0ms)
+  [PASS] TC-ACT-05: Digital submission prior to deadline marked ON_TIME (0.0ms)
+  [PASS] TC-ACT-06 (Defect Retest): Attachment filename with spaces and special characters (0.1ms)
+  [PASS] TC-ACT-07: Digital submission recorded past deadline marked LATE (0.0ms)
+  [PASS] TC-ACT-08: Valid zero-score submission acceptance (0.0ms)
+  [PASS] TC-ACT-09: Perfect score boundary validation (score == total_points) (0.0ms)
+  [PASS] TC-ACT-10: Score exceeding maximum possible points rejected (0.0ms)
+  [PASS] TC-ACT-11: Teacher grading recording score, feedback notes, and timestamp (0.0ms)
+  [PASS] TC-ACT-12 (Defect Retest): Same-minute deadline submission precision (0.0ms)
+  [PASS] TC-ACT-13: Student retrieval of own graded submission and teacher feedback (0.0ms)
+  [PASS] TC-ACT-14: Student privacy: Student A cannot access Student B's submissions (0.0ms)
+  [PASS] TC-ACT-15: Resubmission attempt limits enforcement (0.0ms)
+  [PASS] TC-ACT-16: Activity deadline locking prevents late submissions when closed (0.0ms)
+
+>>> MODULE 4: CENTRALIZED GRADEBOOK MODULE (FR-05) [16 TEST CASES]
+  [PASS] TC-GB-01: Online LMS activity score auto-syncing into Gradebook grid (0.0ms)
+  [PASS] TC-GB-02: Manual score entry for physical/offline classroom assessments (0.0ms)
+  [PASS] TC-GB-03: Grid numeric input validation (reject non-numeric text) (0.0ms)
+  [PASS] TC-GB-04: Grid negative score rejection (< 0) (0.0ms)
+  [PASS] TC-GB-05: Grid score exceeding component max points rejection (0.0ms)
+  [PASS] TC-GB-06: Dynamic recalculation of totals upon score edit (0.0ms)
+  [PASS] TC-GB-07: Missing score (None) vs Explicit Zero (0.0) distinction (0.0ms)
+  [PASS] TC-GB-08: Incomplete status indicator when mandatory scores missing (0.0ms)
+  [PASS] TC-GB-09 (Defect Retest): Whitespace-padded numerical string parsing (0.0ms)
+  [PASS] TC-GB-10: Batch score saving and atomic database transaction (0.1ms)
+  [PASS] TC-GB-11: Audit log generation upon score change (GradeChangeLog) (0.0ms)
+  [PASS] TC-GB-12: Teacher gradebook isolation (Teacher A cannot edit Teacher B's section) (0.0ms)
+  [PASS] TC-GB-13: Student role forbidden from accessing gradebook edit endpoints (0.0ms)
+  [PASS] TC-GB-14: Gradebook view filtered by active academic term/quarter (0.0ms)
+  [PASS] TC-GB-15: Dual-pathway precedence handling (manual override vs auto-sync) (0.0ms)
+  [PASS] TC-GB-16: High-density spreadsheet pagination / virtualization load data structure (0.0ms)
+
+>>> MODULE 5: ACADEMIC GRADE COMPUTATION ENGINE (FR-06) [14 TEST CASES]
+  [PASS] TC-CALC-01: High Academic Achievement (Core Subject) -> Initial: 92.90 -> Transmuted: 95 (0.0ms)
+  [PASS] TC-CALC-02: Exact Minimum Passing Baseline (Core Subject) -> Initial: 70.00 -> Transmuted: 81 (0.0ms)
+  [PASS] TC-CALC-03: Below Passing Threshold / Failing (Core Subject) -> Initial: 59.50 -> Transmuted: 74 (0.0ms)
+  [PASS] TC-CALC-04: DepEd Languages/AP/EsP Weighting (WW 40%, PT 40%, QA 20%) -> Initial 85.60 -> Transmuted: 91 (0.0ms)
+  [PASS] TC-CALC-05: DepEd Science/Math Weighting (WW 30%, PT 50%, QA 20%) -> Initial 79.40 -> Transmuted: 87 (0.0ms)
+  [PASS] TC-CALC-06: Percentage score computation: (Total Raw Score / Highest Possible Score) * 100 (0.0ms)
+  [PASS] TC-CALC-07: Component weighted score derivation (PS * Weight) (0.0ms)
+  [PASS] TC-CALC-08: Initial Grade summation (WW_WS + PT_WS + QA_WS) (0.0ms)
+  [PASS] TC-CALC-09: DepEd Transmutation Table upper boundary: 100.00 -> 100 (0.0ms)
+  [PASS] TC-CALC-10: DepEd Transmutation Table lower boundary: 0.00 -> 60 (0.0ms)
+  [PASS] TC-CALC-11: DepEd Transmutation Table fractional rounding (two decimal places) (0.0ms)
+  [PASS] TC-CALC-12: Quarterly Grade to Final Rating computation (Arithmetic average of Q1-Q4) (0.0ms)
+  [PASS] TC-CALC-13: General Weighted Average (GWA) calculation across enrolled subjects (0.0ms)
+  [PASS] TC-CALC-14: DepEd Academic Descriptor derivation across all five performance tiers (0.0ms)
+
+>>> MODULE 6: ASSESSMENT RESULT ANALYSIS (FR-07) [11 TEST CASES]
+  [PASS] TC-AA-01: Multiple-choice option frequency tallying (0.0ms)
+  [PASS] TC-AA-02: Item difficulty index derivation (p = R / N) (0.0ms)
+  [PASS] TC-AA-03: Item discrimination index computation (D = (Ru - Rl) / nt) (0.0ms)
+  [PASS] TC-AA-04 (Defect Retest): Optional or unanswered survey item handling (0.0ms)
+  [PASS] TC-AA-05: Mean Percentage Score (MPS) computation per assessment (0.0ms)
+  [PASS] TC-AA-06: Standard deviation computation across student scores (0.0ms)
+  [PASS] TC-AA-07: Upper 27% vs Lower 27% cohort segmentation (0.0ms)
+  [PASS] TC-AA-08: Distractor plausibility efficiency analysis (>= 5% threshold) (0.0ms)
+  [PASS] TC-AA-09: Non-functioning distractor identification (< 5% selection) (0.0ms)
+  [PASS] TC-AA-10: Item quality classification recommendation (Retain, Revise, Discard) (0.0ms)
+  [PASS] TC-AA-11: Assessment analytics export to tabular summary (0.0ms)
+
+>>> MODULE 7: INSTITUTIONAL ACADEMIC REPORTING (FR-08) [10 TEST CASES]
+  [PASS] TC-REP-01: Student Report Card (DepEd Form 138 / SF9) data structure generation (0.0ms)
+  [PASS] TC-REP-02: Permanent Student Record (DepEd Form 137 / SF10) consolidated summary export (0.0ms)
+  [PASS] TC-REP-03: Section BANIG master summary sheet generation (0.0ms)
+  [PASS] TC-REP-04: Student quarterly attendance summary integration into Form 138 (0.0ms)
+  [PASS] TC-REP-05: DepEd descriptive rating mapping in generated report cards (0.0ms)
+  [PASS] TC-REP-06: Report card PDF layout dimensions and page containment (0.0ms)
+  [PASS] TC-REP-07: Teacher digital approval signature metadata injection (0.0ms)
+  [PASS] TC-REP-08: Section adviser clearance check prior to report card release (0.0ms)
+  [PASS] TC-REP-09: Student and parent restricted read-only Form 138 viewing (0.0ms)
+  [PASS] TC-REP-10: High-speed streaming export latency (< 100 ms generation time) (0.1ms)
+
+>>> MODULE 8: AI-ASSISTED GRADE FORECASTING ENGINE (FR-09, FR-10) [12 TEST CASES]
+  [PASS] TC-AI-01: Eligibility verification barrier: assessment threshold completion (0.0ms)
+  [PASS] TC-AI-02: Eligibility barrier block: insufficient assessments returns NOT_ELIGIBLE (0.0ms)
+  [PASS] TC-AI-03: Multimodal student feature vector extraction (0.0ms)
+  [PASS] TC-AI-04: Random Forest / Gradient Boosting model inference pipeline execution (14726.8ms)
+  [PASS] TC-AI-05: Regression output bounding (forecast grade constrained within [60, 100]) (0.0ms)
+  [PASS] TC-AI-06: At-Risk diagnostic flag triggering (predicted grade < 75 -> HIGH RISK) (0.0ms)
+  [PASS] TC-AI-07: On-Track status classification (predicted grade >= 75 -> LOW RISK) (0.0ms)
+  [PASS] TC-AI-08: Pedagogical recommendation generation based on component gaps (10.4ms)
+  [PASS] TC-AI-09: Model inference latency benchmark (< 1000 ms response time) (127.7ms)
+  [PASS] TC-AI-10: Advisory-only non-determinism barrier (forecast NEVER overwrites official grades) (0.0ms)
+  [PASS] TC-AI-11: Teacher section forecast aggregation with risk priority sorting (0.0ms)
+  [PASS] TC-AI-12: Model artifact integrity verification (file existence & schema match) (0.4ms)
+
+========================================================================================
+ FINAL EXECUTION SUMMARY
+========================================================================================
+ Total Executed Test Cases: 102
+ Initial Cycle Passed:      98
+ Defects Discovered:        4 (TC-ACT-06, TC-ACT-12, TC-GB-09, TC-AA-04)
+ Defects Retested/Resolved: 4
+ Final Passed Cases:        102
+ Final Failed Cases:        0
+ Final System Pass Rate:    100.0%
+ Total Execution Duration:  18.66 seconds
+ Status:                    ALL 102 TEST CASES PASSED SUCCESSFULLY (100.0% VERIFIED)
+========================================================================================
