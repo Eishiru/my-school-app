@@ -23,6 +23,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useStudentSubject } from '../../../hooks/useStudentSubject';
 import { useStudentSubjectQuizzes } from '../../../hooks/useStudentSubjectQuizzes';
 import { useStudentSubjectFiles } from '../../../hooks/useStudentSubjectFiles';
+import { useStudentGradeForecast } from '../../../hooks/useStudentQuizzes';
+import GradeForecastCard from '../../../components/studentcomponents/GradeForecastCard';
 import {
   useStudentSubjectGrades,
   useStudentQuizAttempts,
@@ -128,6 +130,10 @@ export default function StudentSubjectpage() {
     isLoading: subjectLoading,
     error: subjectError,
   } = useStudentSubject(offeringId);
+
+  const { data: forecast, isLoading: loadingForecast } = useStudentGradeForecast(
+    offeringId > 0 ? offeringId : undefined
+  );
 
   const {
     data: quizzes = [],
@@ -669,6 +675,13 @@ export default function StudentSubjectpage() {
         {/* Tab 3: Grades */}
         {activeTab === 'grades' && (
           <div className="p-5 space-y-6">
+            {/* AI-Assisted Grade Forecast Banner */}
+            <GradeForecastCard
+              forecast={forecast}
+              isLoading={loadingForecast}
+              subjectName={offering?.subject_name}
+            />
+
             {/* 3 Semesters + Final Grade Summary Cards */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               {[1, 2, 3].map((sNum) => {

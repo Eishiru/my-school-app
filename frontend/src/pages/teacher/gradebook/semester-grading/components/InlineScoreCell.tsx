@@ -24,8 +24,8 @@ export const InlineScoreCell: React.FC<InlineScoreCellProps> = ({
       );
     }
     return (
-      <span className="inline-flex items-baseline justify-center gap-0.5 text-xs">
-        <span className="font-bold text-slate-800">{score}</span>
+      <span className="inline-flex items-baseline justify-center gap-0.5 text-xs font-mono">
+        <span className="font-bold text-slate-900">{score}</span>
         <span className="text-[10px] text-slate-400 font-medium select-none">
           /{maxPoints}
         </span>

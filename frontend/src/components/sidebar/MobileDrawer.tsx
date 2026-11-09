@@ -31,21 +31,21 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
         className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
       />
 
-      <aside className="fixed top-0 left-0 z-50 w-72 h-[100dvh] bg-white shadow-2xl flex flex-col">
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-100 px-6">
+      <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-2xl">
+        <div className="flex h-16 items-center justify-between border-b border-gray-100 px-5">
           <SidebarLogo />
 
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 hover:bg-gray-100"
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             aria-label="Close menu"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 overflow-y-auto p-2">
+        <nav className="p-2">
           <SidebarNavigation
             links={links}
             onNavigate={onClose}

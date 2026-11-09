@@ -87,8 +87,8 @@ REST_FRAMEWORK = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=30),  # Token valid for 30 days
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=90),  # Refresh token valid for 90 days
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),  # Token valid for 8 hours (single school shift)
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),  # Refresh token valid for 7 days
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': False,
     'UPDATE_LAST_LOGIN': False,
