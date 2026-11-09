@@ -941,23 +941,3 @@ export async function getStudentDetail(
 
   return response.json();
 }
-
-
-export async function getSubjectOfferingForecasts(
-  subjectOfferingId: number
-): Promise<any[]> {
-  const response = await authFetch(
-    `/subject-offerings/${subjectOfferingId}/grade-forecasts/`,
-    {
-      method: "GET",
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch section grade forecasts: ${response.status}`
-    );
-  }
-
-  return response.json();
-}

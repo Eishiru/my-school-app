@@ -10,7 +10,6 @@ import {
   MapPin,
   Menu,
   X,
-  Sparkles,
 } from "lucide-react";
 
 import { useTeacherSubject } from "../../../hooks/useTeacherSubjects";
@@ -163,14 +162,6 @@ export default function SubjectLayout() {
           </NavLink>
 
           <NavLink
-            to="analytics"
-            className={tabClass}
-          >
-            <Sparkles size={14} className="mr-1.5 text-indigo-400 inline" />
-            AI Forecasts
-          </NavLink>
-
-          <NavLink
             to="classlist"
             className={tabClass}
           >
@@ -207,14 +198,6 @@ export default function SubjectLayout() {
               className={tabClass}
             >
               Grades
-            </NavLink>
-
-            <NavLink
-              to="analytics"
-              className={tabClass}
-            >
-              <Sparkles size={13} className="mr-1 text-indigo-400 inline" />
-              AI Forecasts
             </NavLink>
 
             <NavLink
@@ -296,20 +279,6 @@ export default function SubjectLayout() {
                 onClick={() => setTabsOpen(false)}
               >
                 Grades
-                <span className="text-xs opacity-70">
-                  →
-                </span>
-              </NavLink>
-
-              <NavLink
-                to="analytics"
-                className={mobileTabClass}
-                onClick={() => setTabsOpen(false)}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <Sparkles size={14} className="text-indigo-600" />
-                  AI Forecasts & Risk
-                </span>
                 <span className="text-xs opacity-70">
                   →
                 </span>

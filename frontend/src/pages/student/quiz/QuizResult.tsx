@@ -14,7 +14,6 @@ import {
   Eye,
 } from 'lucide-react';
 import { useStudentGradeForecast } from '../../../hooks/useStudentQuizzes';
-import GradeForecastCard from '../../../components/studentcomponents/GradeForecastCard';
 
 interface QuizResultData {
   score: number;
@@ -198,14 +197,49 @@ export default function QuizResult() {
           </div>
         )}
 
-        {/* AI Grade Forecasting Card */}
-        {(forecast || loadingForecast) && (
-          <div className="mb-6 text-left">
-            <GradeForecastCard
-              forecast={forecast}
-              isLoading={loadingForecast}
-              subjectName={result.subject_name}
-            />
+        {/* AI Grade Insights (if available) */}
+        {forecast && !loadingForecast && (
+          <div className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-left">
+            <div className="flex items-center gap-1.5 mb-3">
+              <Sparkles size={14} className="text-indigo-600" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Performance Standing
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg bg-white p-2.5 border border-slate-100 shadow-2xs">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Predicted
+                </p>
+                <p className="font-mono text-base font-bold text-indigo-700 mt-0.5">
+                  {forecast.predicted_grade.toFixed(1)}%
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-white p-2.5 border border-slate-100 shadow-2xs">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Risk Level
+                </p>
+                <span
+                  className={`inline-flex items-center mt-1 px-2 py-0.2 rounded-md text-[10px] font-semibold ${getRiskBadge(
+                    forecast.risk_level
+                  )}`}
+                >
+                  {forecast.risk_level}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-white p-2.5 border border-slate-100 shadow-2xs">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Trend
+                </p>
+                <div className="mt-0.5 flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
+                  {renderTrendIcon(forecast.performance_trend)}
+                  <span>{forecast.performance_trend}</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
