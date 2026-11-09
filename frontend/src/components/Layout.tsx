@@ -55,8 +55,8 @@ export default function Layout() {
           isDesktop={isDesktop}
         />
 
-        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50/60 p-3 sm:p-5 lg:p-6">
-          <div className="mx-auto w-full max-w-[1720px] space-y-6">
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50/60 p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
             <Outlet />
           </div>
         </main>
