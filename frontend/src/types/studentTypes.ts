@@ -258,9 +258,25 @@ export interface StudentQuizReviewData {
 }
 
 export interface StudentGradeForecast {
+  id?: number;
   predicted_grade: number;
+  baseline_grade?: number;
   risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
   performance_trend: 'IMPROVING' | 'STABLE' | 'DECLINING';
+  performance_descriptor?: 'Advancing' | 'Benchmarking' | 'Developing' | 'Connecting' | 'Emerging' | string;
+  confidence_score?: number;
+  model_name?: string;
+  is_eligible?: boolean;
+  eligible?: boolean;
+  status?: string;
+  strong_topics?: string[];
+  weak_topics?: string[];
+  recommendations?: string;
+  reason?: string;
+  current_average?: number;
+  quiz_count?: number;
+  generated_at?: string;
+  updated_at?: string;
 }
 
 export interface StudentSubjectQuarterlyGrade {
