@@ -22,24 +22,20 @@ export interface StudentRowData {
   // Individual activity scores mapped by activity id
   activity_scores: Record<number, number | null>;
 
-  // Component totals, percentages, and weighted scores
+  // Component totals and percentages
   written_work_score: number | null;
   written_work_total: number;
   written_work_pct: number;
-  written_work_ws: number;
 
   performance_task_score: number | null;
   performance_task_total: number;
   performance_task_pct: number;
-  performance_task_ws: number;
 
   final_exam_score: number | null;
   final_exam_total: number;
   final_exam_pct: number;
-  final_exam_ws: number;
 
   // Computed final grade and remarks
-  initial_grade: number | null;
   final_grade: number | null;
   remarks: string;
 
