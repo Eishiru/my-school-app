@@ -35,8 +35,6 @@ import {
   percentToDecimal,
   calculateCategoryTotals,
   calculatePercentage,
-  calculateWeightedScore,
-  calculateInitialGrade,
   calculateFinalGrade,
 } from "./semester-grading/utils/gradeCalculations";
 
@@ -313,29 +311,15 @@ export default function SubjectSemesterGrades() {
       }
       const fePct = calculatePercentage(feScore, feTotal);
 
-      // Category Weighted Scores
-      const wwWS = calculateWeightedScore(wwPct, weights.ww_weight);
-      const ptWS = calculateWeightedScore(ptPct, weights.pt_weight);
-      const feWS = calculateWeightedScore(fePct, weights.sa_weight);
-
-      // 4. Initial Grade & Term Grade (live calculation)
-      let initialGrade: number | null = null;
+      // 4. Final Grade (live calculation)
       let finalGrade: number | null = null;
-      const hasScores = wwScore !== null || ptScore !== null || feScore !== null;
-
-      if (isModified || hasScores) {
-        initialGrade = calculateInitialGrade(wwPct, ptPct, fePct, weights);
+      if (isModified || (wwScore !== null || ptScore !== null || feScore !== null)) {
         finalGrade = calculateFinalGrade(wwPct, ptPct, fePct, weights);
       } else if (
         serverGrade?.final_grade !== undefined &&
         serverGrade.final_grade !== null
       ) {
         finalGrade = Number(serverGrade.final_grade);
-        initialGrade =
-          serverGrade?.initial_grade !== undefined &&
-          serverGrade.initial_grade !== null
-            ? Number(serverGrade.initial_grade)
-            : null;
       }
 
       // Remarks
@@ -353,16 +337,12 @@ export default function SubjectSemesterGrades() {
         written_work_score: wwScore,
         written_work_total: wwTotal,
         written_work_pct: wwPct,
-        written_work_ws: wwWS,
         performance_task_score: ptScore,
         performance_task_total: ptTotal,
         performance_task_pct: ptPct,
-        performance_task_ws: ptWS,
         final_exam_score: feScore,
         final_exam_total: feTotal,
         final_exam_pct: fePct,
-        final_exam_ws: feWS,
-        initial_grade: initialGrade,
         final_grade: finalGrade,
         remarks,
         isModified,
@@ -713,8 +693,8 @@ export default function SubjectSemesterGrades() {
   };
 
   return (
-    <div className="w-full space-y-5">
-      <div className="flex flex-col space-y-5 w-full">
+    <main className="min-h-screen bg-slate-50 text-slate-800">
+      <div className="flex flex-col space-y-6 p-4 sm:p-6 max-w-[1600px] mx-auto">
         {/* Header */}
         <GradingSheetHeader
           subjectName={
@@ -812,6 +792,6 @@ export default function SubjectSemesterGrades() {
         onClose={() => setShowAddActivityModal(false)}
         onSubmit={handleCreateActivity}
       />
-    </div>
+    </main>
   );
 }

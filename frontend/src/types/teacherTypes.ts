@@ -330,8 +330,6 @@ export type SemesterGrade = {
   pt_weight: number;
   sa_weight: number;
 
-  initial_grade?: number;
-  transmuted_grade?: number;
   final_grade?: number;
 
   remarks: string;
