@@ -48,7 +48,7 @@ export const GradingSheetHeader: React.FC<GradingSheetHeaderProps> = ({
   return (
     <div className="space-y-4">
       {/* Top Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-5 py-3.5 rounded-xl border border-slate-200 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         {/* Left: Back button and Subject metadata */}
         <div className="flex items-center gap-4">
           <button
@@ -91,13 +91,13 @@ export const GradingSheetHeader: React.FC<GradingSheetHeaderProps> = ({
         </div>
 
         {/* Right: Semester selector pills */}
-        <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1">
+        <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200">
           {semesterOptions.map((item) => (
             <button
               key={item.value}
               type="button"
               onClick={() => onSemesterChange(item.value)}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
                 currentSemester === item.value
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-500 hover:text-slate-800"
@@ -119,7 +119,7 @@ export const GradingSheetHeader: React.FC<GradingSheetHeaderProps> = ({
             placeholder="Search student name or ID..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs text-slate-800 placeholder:text-slate-400"
+            className="w-full pl-10 pr-4 py-2 text-sm font-medium bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
           />
         </div>
 
@@ -129,7 +129,7 @@ export const GradingSheetHeader: React.FC<GradingSheetHeaderProps> = ({
           <button
             type="button"
             onClick={onOpenAddActivity}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition"
           >
             <Plus className="w-4 h-4" />
             <span>Add Activity</span>
@@ -139,7 +139,7 @@ export const GradingSheetHeader: React.FC<GradingSheetHeaderProps> = ({
           <button
             type="button"
             onClick={onToggleEdit}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl shadow-xs transition cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl shadow-xs transition ${
               isEditing
                 ? "bg-slate-900 text-white hover:bg-slate-800 ring-2 ring-slate-900/20"
                 : "bg-indigo-600 text-white hover:bg-indigo-700"
@@ -190,7 +190,7 @@ export const GradingSheetHeader: React.FC<GradingSheetHeaderProps> = ({
           <button
             type="button"
             onClick={onOpenWeightsModal}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 shadow-xs transition cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 shadow-sm transition"
           >
             <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
             <span>Grading Weights</span>
