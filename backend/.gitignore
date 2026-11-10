@@ -19,7 +19,6 @@ build/
 *.db
 
 # Django
-staticfiles/
 media/
 *.log
 

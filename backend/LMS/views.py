@@ -74,6 +74,12 @@ def recalc_quarterly_component(*, student, offering, semester, grade_type):
                 student=student,
                 SubjectOffering=offering,
                 semester=semester,
+                written_work_score=0.0,
+                written_work_total=0.0,
+                performance_task_score=0.0,
+                performance_task_total=0.0,
+                quarterly_assessment_score=0.0,
+                quarterly_assessment_total=0.0,
             )
         else:
             return
@@ -101,8 +107,8 @@ def recalc_quarterly_component(*, student, offering, semester, grade_type):
     # ✅ total_points counted once per quiz (not per attempt)
     total_points = quizzes.aggregate(s=Sum("total_points"))["s"] or 0.0
 
-    # If there are quizzes, use their total points; if 0 quizzes remain, default to baseline 100.0 with 0.0 score
-    comp_total = float(total_points) if total_points > 0 else 100.0
+    # If quizzes exist for this component, record actual points; if 0 quizzes exist, total is 0.0 (unadministered)
+    comp_total = float(total_points) if total_points > 0 else 0.0
     comp_score = float(total_score) if total_points > 0 else 0.0
 
     if grade_type == "WRITTEN_WORK":
@@ -114,6 +120,17 @@ def recalc_quarterly_component(*, student, offering, semester, grade_type):
     elif grade_type == "FINAL_EXAM":
         grade.quarterly_assessment_score = comp_score
         grade.quarterly_assessment_total = comp_total
+
+    # Also clean up any unadministered components that may have inherited legacy default 100.0 totals without any quizzes
+    for gt, score_field, total_field in [
+        ("WRITTEN_WORK", "written_work_score", "written_work_total"),
+        ("PERFORMANCE_TASK", "performance_task_score", "performance_task_total"),
+        ("FINAL_EXAM", "quarterly_assessment_score", "quarterly_assessment_total"),
+    ]:
+        if gt != grade_type and getattr(grade, total_field) == 100.0 and getattr(grade, score_field) == 0.0:
+            if not Quiz.objects.filter(SubjectOffering=offering, semester=semester, grade_type=gt).exists():
+                setattr(grade, score_field, 0.0)
+                setattr(grade, total_field, 0.0)
 
     grade.save()
 
@@ -205,10 +222,33 @@ class TeacherSubjectListViewSet(ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        from django.db.models import OuterRef, Subquery, IntegerField, FloatField, Count, Avg
+
+        student_count_sq = Student.objects.filter(
+            section=OuterRef('section')
+        ).values('section').annotate(c=Count('id')).values('c')
+        
+        average_sq = QuarterlyGrade.objects.filter(
+            SubjectOffering=OuterRef('pk'),
+            final_grade__isnull=False,
+            semester__school_year__is_active=True
+        ).values('SubjectOffering').annotate(a=Avg('final_grade')).values('a')
+        
+        pending_sq = QuizAttempt.objects.filter(
+            quiz__SubjectOffering=OuterRef('pk'),
+            status='SUBMITTED',
+            answers__question__question_type='SHORT_ANSWER',
+            answers__manually_graded=False
+        ).values('quiz__SubjectOffering').annotate(c=Count('id', distinct=True)).values('c')
 
         return (
             SubjectOffering.objects
             .select_related("section", "teacher")
+            .annotate(
+                annotated_student_count=Subquery(student_count_sq, output_field=IntegerField()),
+                annotated_average=Subquery(average_sq, output_field=FloatField()),
+                annotated_pending_tasks=Subquery(pending_sq, output_field=IntegerField()),
+            )
             .filter(
                 teacher=user,
                 section__is_active=True
@@ -239,14 +279,39 @@ class SubjectOfferingViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
+        
+        from django.db.models import OuterRef, Subquery, IntegerField, FloatField, Count, Avg
+        
+        student_count_sq = Student.objects.filter(
+            section=OuterRef('section')
+        ).values('section').annotate(c=Count('id')).values('c')
+        
+        average_sq = QuarterlyGrade.objects.filter(
+            SubjectOffering=OuterRef('pk'),
+            final_grade__isnull=False,
+            semester__school_year__is_active=True
+        ).values('SubjectOffering').annotate(a=Avg('final_grade')).values('a')
+        
+        pending_sq = QuizAttempt.objects.filter(
+            quiz__SubjectOffering=OuterRef('pk'),
+            status='SUBMITTED',
+            answers__question__question_type='SHORT_ANSWER',
+            answers__manually_graded=False
+        ).values('quiz__SubjectOffering').annotate(c=Count('id', distinct=True)).values('c')
+
+        qs = SubjectOffering.objects.select_related("section", "teacher").annotate(
+            annotated_student_count=Subquery(student_count_sq, output_field=IntegerField()),
+            annotated_average=Subquery(average_sq, output_field=FloatField()),
+            annotated_pending_tasks=Subquery(pending_sq, output_field=IntegerField()),
+        )
 
         # Teachers only see their own offerings
         if user.role == "TEACHER":
-            return SubjectOffering.objects.filter(teacher=user).select_related("section", "teacher")
+            return qs.filter(teacher=user)
 
         # Admins can see all (optional)
         if user.role == "ADMIN":
-            return SubjectOffering.objects.all().select_related("section", "teacher")
+            return qs
 
         # Others see none
         return SubjectOffering.objects.none()
@@ -286,15 +351,16 @@ class SubjectOfferingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="quizzes")
     def quizzes(self, request, pk=None):
-        # IMPORTANT: FK field is SubjectOffering / SubjectOffering_id (NOT subject_offering)
-        qs = Quiz.objects.filter(SubjectOffering_id=pk).order_by("-posted_at", "-created_at")
+        offering = self.get_object()
+        qs = Quiz.objects.filter(SubjectOffering=offering).order_by("-posted_at", "-created_at")
         return Response(QuizSerializer(qs, many=True).data)
 
     @action(detail=True, methods=["get"], url_path="recent-quiz-grades")
     def recent_quiz_grades(self, request, pk=None):
+        offering = self.get_object()
         attempts = (
             QuizAttempt.objects
-            .filter(quiz__SubjectOffering_id=pk, status="GRADED",)
+            .filter(quiz__SubjectOffering=offering, status="GRADED")
             .select_related("student__user", "quiz")
             .order_by("-submitted_at")[:10]
         )
@@ -315,6 +381,22 @@ class SubjectOfferingViewSet(viewsets.ModelViewSet):
             })
 
         return Response(data)
+
+    @action(detail=True, methods=["get", "post"], url_path="grade-forecasts")
+    def grade_forecasts(self, request, pk=None):
+        """
+        GET /api/subject-offerings/<pk>/grade-forecasts/
+        Generates section-wide grade forecasts for all enrolled students.
+        """
+        offering = self.get_object()
+        from .ml.forecaster import GradeForecaster
+        forecaster = GradeForecaster()
+        try:
+            results = forecaster.predict_for_offering(offering_id=offering.id)
+            return Response(results)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
     @action(detail=False, methods=["get"], url_path="my", permission_classes=[IsAuthenticated])
     def my_subject_offerings(self, request):
         """
@@ -463,8 +545,9 @@ class StudentSubjectOfferingViewSet(viewsets.ReadOnlyModelViewSet):
     
     @action(detail=True, methods=["get"], url_path="quizzes")
     def quizzes(self, request, pk=None):
+        from django.db.models import Count
         offering = self.get_object()
-        qs = offering.quizzes.all().order_by("-id")  # uses related_name="quizzes"
+        qs = offering.quizzes.annotate(question_count_annotated=Count('questions')).order_by("-id")
         return Response(QuizSerializer(qs, many=True).data)
     
     def retrieve(self, request, *args, **kwargs):
@@ -520,21 +603,35 @@ def teacher_submissions_summary(request):
     if request.user.role == "TEACHER":
         offerings = offerings.filter(teacher=request.user)
 
+    from django.db.models import OuterRef, Subquery, IntegerField, Count
+
+    student_count_sq = Student.objects.filter(
+        section=OuterRef('section')
+    ).values('section').annotate(c=Count('id')).values('c')
+
+    attempts_sq = QuizAttempt.objects.filter(
+        quiz__SubjectOffering=OuterRef('pk')
+    ).values('quiz__SubjectOffering').annotate(c=Count('id')).values('c')
+
+    unique_students_sq = QuizAttempt.objects.filter(
+        quiz__SubjectOffering=OuterRef('pk')
+    ).values('quiz__SubjectOffering').annotate(c=Count('student', distinct=True)).values('c')
+
     offerings = (
         offerings.select_related("section", "teacher")
         .annotate(
-            total_students=Count("section__students", distinct=True),
-            attempts=Count("quizzes__attempts", distinct=False),
-            unique_students=Count("quizzes__attempts__student", distinct=True),
+            total_students_annotated=Subquery(student_count_sq, output_field=IntegerField()),
+            attempts_annotated=Subquery(attempts_sq, output_field=IntegerField()),
+            unique_students_annotated=Subquery(unique_students_sq, output_field=IntegerField()),
         )
     )
 
     # Example summary payload
     data = []
     for o in offerings:
-        total_students = o.total_students
-        attempts = o.attempts
-        unique_students = o.unique_students
+        total_students = o.total_students_annotated or 0
+        attempts = o.attempts_annotated or 0
+        unique_students = o.unique_students_annotated or 0
         submission_rate = round((unique_students / total_students) * 100, 2) if total_students else 0
 
         data.append({
@@ -865,6 +962,10 @@ class StudentViewSet(ModelViewSet):
     def get_queryset(self):
         queryset = Student.objects.select_related("user", "section")
 
+        # Students can only access their own student profile
+        if getattr(self.request.user, "role", None) == "STUDENT":
+            return queryset.filter(user=self.request.user)
+
         grade = self.request.query_params.get("grade_level")
         section = self.request.query_params.get("section")
 
@@ -880,6 +981,8 @@ class StudentViewSet(ModelViewSet):
     @action(detail=True, methods=["get"], url_path="semester-summary")
     def semester_summary(self, request, pk=None):
         student = self.get_object()
+        if getattr(request.user, "role", None) == "STUDENT" and student.user != request.user:
+            return Response({"detail": "Not authorized to view other student grades."}, status=status.HTTP_403_FORBIDDEN)
         grades = QuarterlyGrade.objects.filter(
             student=student, semester__school_year__is_active=True,
         ).select_related("SubjectOffering", "SubjectOffering__teacher", "semester")
@@ -1031,17 +1134,32 @@ def user_detail(request, pk):
 # LOGIN
 # =========================
 class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request):
         import logging
+        import sys
+        import traceback
         logger = logging.getLogger(__name__)
         logger.info(f"Login attempt - Data received: {request.data}")
         logger.info(f"Content-Type: {request.content_type}")
         
-        serializer = LoginSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.error(f"Validation errors: {serializer.errors}")
-        serializer.is_valid(raise_exception=True)
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        try:
+            serializer = LoginSerializer(data=request.data)
+            if not serializer.is_valid():
+                logger.error(f"Validation errors: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            tb = traceback.format_exc()
+            logger.error(f"Login unhandled exception:\n{tb}")
+            print(f"LOGIN ERROR:\n{tb}", file=sys.stderr)
+            return Response({
+                "detail": f"Database/Server error: {str(e)}",
+                "error_type": type(e).__name__
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 # ==================== TEACHER QUIZ VIEWS ====================
 
@@ -1285,6 +1403,9 @@ class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelView
         }
         Updates or creates QuizAttempt and creates GradeChangeLog records!
         """
+        if getattr(request.user, 'role', None) not in ('TEACHER', 'ADMIN'):
+            return Response({'detail': 'Only teachers or administrators can record scores.'}, status=status.HTTP_403_FORBIDDEN)
+
         updates = request.data.get('updates', [])
         if not isinstance(updates, list):
             return Response({'detail': 'updates must be a list'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1311,6 +1432,10 @@ class TeacherQuizViewSet(QuizDuplicateMixin, QuizGroupsMixin, viewsets.ModelView
                 except Quiz.DoesNotExist:
                     continue
             quiz = quiz_cache[quiz_id]
+
+            # IDOR Check: Ensure requesting teacher owns this quiz or subject offering
+            if quiz.teacher != request.user and getattr(quiz.SubjectOffering, 'teacher_id', None) != request.user.id and request.user.role != 'ADMIN':
+                continue
 
             if student_id not in student_cache:
                 try:
@@ -1916,56 +2041,101 @@ def generate_study_plan(request):
 @permission_classes([IsAuthenticated])
 def grade_forecast(request, student_id=None, SubjectOffering_id=None):
     """
-    Get or generate grade forecast for a student
-    
-    GET: Retrieve existing forecast
-    POST: Generate new forecast using AI
+    Get or generate grade forecast for a student.
+    Uses the trained DepEd ML engine (Gradient Boosting Regressor) with
+    minimum eligibility enforcement (WW >= 1, PT >= 1, FA >= 1).
     """
-    # Determine student_id (from param or current user)
+    # Determine student_id (from param, query, or current user)
     if student_id is None:
+        student_id = request.query_params.get('student_id') or (request.data.get('student_id') if hasattr(request, 'data') else None)
+
+    # IDOR Check: Students can only view their own grade forecast
+    if getattr(request.user, 'role', None) == 'STUDENT':
+        user_student_id = getattr(getattr(request.user, 'student_profile', None), 'id', None)
+        if not user_student_id:
+            return Response({'error': 'Not a student'}, status=status.HTTP_403_FORBIDDEN)
+        if student_id is not None and str(student_id) != str(user_student_id):
+            return Response({'error': 'Unauthorized to view other student forecasts'}, status=status.HTTP_403_FORBIDDEN)
+        student_id = user_student_id
+    elif student_id is None:
         if hasattr(request.user, 'student_profile'):
             student_id = request.user.student_profile.id
         else:
-            return Response({'error': 'Not a student'}, status=status.HTTP_403_FORBIDDEN)
-    
+            return Response({'error': 'student_id is required for non-student users'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        student = Student.objects.get(id=student_id)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .ml.forecaster import GradeForecaster
+    forecaster = GradeForecaster()
+
     if request.method == 'GET':
-        # Get all forecasts for student or specific subject
         if SubjectOffering_id:
             try:
-                forecast = GradeForecast.objects.get(student_id=student_id, SubjectOffering_id=SubjectOffering_id)
+                offering = SubjectOffering.objects.get(id=SubjectOffering_id)
+            except SubjectOffering.DoesNotExist:
+                return Response({'error': 'SubjectOffering not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            forecast = GradeForecast.objects.filter(student=student, SubjectOffering=offering).first()
+            if forecast:
                 serializer = GradeForecastSerializer(forecast)
                 return Response(serializer.data)
-            except GradeForecast.DoesNotExist:
-                return Response(
-                    {'error': 'No forecast found. Generate one by making a POST request.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+
+            # Lazy evaluation on demand
+            res = forecaster.predict_for_student(student, offering)
+            if res.get('eligible', False):
+                forecast = GradeForecast.objects.get(id=res['id'])
+                return Response(GradeForecastSerializer(forecast).data)
+            else:
+                return Response({
+                    'predicted_grade': res['predicted_grade'],
+                    'baseline_grade': res['baseline_grade'],
+                    'risk_level': res['risk_level'],
+                    'performance_trend': res['performance_trend'],
+                    'performance_descriptor': res['performance_descriptor'],
+                    'is_eligible': False,
+                    'status': 'INELIGIBLE',
+                    'recommendations': res['recommendations'],
+                    'reason': res['reason'],
+                    'strong_topics': res.get('strong_topics', []),
+                    'weak_topics': res.get('weak_topics', []),
+                })
         else:
-            forecasts = GradeForecast.objects.filter(student_id=student_id)
+            forecasts = GradeForecast.objects.filter(student=student)
             serializer = GradeForecastSerializer(forecasts, many=True)
             return Response(serializer.data)
-    
+
     elif request.method == 'POST':
-        # Generate new forecast
         if not SubjectOffering_id:
             SubjectOffering_id = request.data.get('SubjectOffering_id')
-        
+
         if not SubjectOffering_id:
             return Response(
                 {'error': 'SubjectOffering_id is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Generate forecast using analytics service
-        analytics = GradeAnalyticsService()
-        forecast = analytics.generate_forecast(student_id, SubjectOffering_id)
 
-        if forecast:
-            serializer = GradeForecastSerializer(forecast)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        try:
+            offering = SubjectOffering.objects.get(id=SubjectOffering_id)
+        except SubjectOffering.DoesNotExist:
+            return Response({'error': 'SubjectOffering not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        res = forecaster.predict_for_student(student, offering)
+        if res.get('eligible', False):
+            forecast = GradeForecast.objects.get(id=res['id'])
+            return Response(GradeForecastSerializer(forecast).data, status=status.HTTP_201_CREATED)
         else:
             return Response(
-                {'error': 'Insufficient data. Need at least 1 completed quiz.'},
+                {
+                    'error': res['reason'],
+                    'is_eligible': False,
+                    'eligibility': res.get('eligibility', {}),
+                    'predicted_grade': res['predicted_grade'],
+                    'risk_level': res['risk_level'],
+                    'performance_trend': res['performance_trend'],
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -1974,12 +2144,23 @@ def grade_forecast(request, student_id=None, SubjectOffering_id=None):
 @permission_classes([IsAuthenticated])
 def student_topic_performance(request, student_id=None, SubjectOffering_id=None):
     """Get topic-level performance data for a student"""
-    # Determine student_id (from param or current user)
+    # Determine student_id (from param, query, or current user)
     if student_id is None:
+        student_id = request.query_params.get('student_id')
+
+    # IDOR Check: Students can only view their own topic performance
+    if getattr(request.user, 'role', None) == 'STUDENT':
+        user_student_id = getattr(getattr(request.user, 'student_profile', None), 'id', None)
+        if not user_student_id:
+            return Response({'error': 'Not a student'}, status=status.HTTP_403_FORBIDDEN)
+        if student_id is not None and str(student_id) != str(user_student_id):
+            return Response({'error': 'Unauthorized to view other student topic performance'}, status=status.HTTP_403_FORBIDDEN)
+        student_id = user_student_id
+    elif student_id is None:
         if hasattr(request.user, 'student_profile'):
             student_id = request.user.student_profile.id
         else:
-            return Response({'error': 'Not a student'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'student_id is required for non-student users'}, status=status.HTTP_400_BAD_REQUEST)
     
     # Filter by subject if provided
     topics_query = QuizTopicPerformance.objects.filter(student_id=student_id)
