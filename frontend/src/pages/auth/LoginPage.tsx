@@ -67,16 +67,34 @@ export const LoginPage = () => {
     } catch (err: any) {
       console.error("Login error:", err);
       if (axios.isAxiosError(err)) {
+        const data = err.response?.data as any;
         if (err.response?.status === 401) {
-          setError("Invalid email or password. Please verify your credentials.");
+          setError(
+            data?.detail || "Invalid email or password. Please verify your credentials."
+          );
         } else if (err.response?.status === 400) {
           const errorMsg =
-            err.response?.data?.email?.[0] ||
-            err.response?.data?.password?.[0] ||
+            (Array.isArray(data?.non_field_errors)
+              ? data.non_field_errors[0]
+              : data?.non_field_errors) ||
+            data?.detail ||
+            data?.email?.[0] ||
+            data?.password?.[0] ||
             "Invalid email or password format.";
           setError(errorMsg);
+        } else if (err.response?.status === 500) {
+          setError(
+            "Internal server error (500). Please check your database connection or backend terminal logs."
+          );
+        } else if (!err.response) {
+          setError(
+            "Cannot reach server. Please verify the Django backend is running on http://127.0.0.1:8000."
+          );
         } else {
-          setError("Unable to connect to school server. Please try again shortly.");
+          setError(
+            data?.detail ||
+              "Unable to connect to school server. Please try again shortly."
+          );
         }
       } else {
         setError(err?.message || "Login failed unexpectedly.");
