@@ -48,15 +48,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </aside>
       )}
-
-      {/* Mobile Drawer */}
-      {!isDesktop && open && (
-        <MobileDrawer
-          links={activeLinks}
-          onClose={onClose}
-          onLogout={handleLogout}
-        />
-      )}
     </>
   );
 };
