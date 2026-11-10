@@ -12,6 +12,7 @@ urlpatterns = [
     path('health/', health),
     path('api/health/', health),
     path('api/', include('LMS.urls')),
+    path('', include('LMS.urls')),
 ]
 
 if settings.DEBUG:

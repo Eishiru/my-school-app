@@ -84,7 +84,9 @@ export const LoginPage = () => {
           setError(errorMsg);
         } else if (err.response?.status === 500) {
           setError(
-            "Internal server error (500). Please check your database connection or backend terminal logs."
+            data?.detail
+              ? `Server error: ${data.detail}`
+              : "Internal server error (500). Please check your database connection or backend logs."
           );
         } else if (!err.response) {
           setError(

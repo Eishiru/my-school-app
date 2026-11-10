@@ -1134,17 +1134,32 @@ def user_detail(request, pk):
 # LOGIN
 # =========================
 class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request):
         import logging
+        import sys
+        import traceback
         logger = logging.getLogger(__name__)
         logger.info(f"Login attempt - Data received: {request.data}")
         logger.info(f"Content-Type: {request.content_type}")
         
-        serializer = LoginSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.error(f"Validation errors: {serializer.errors}")
-        serializer.is_valid(raise_exception=True)
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        try:
+            serializer = LoginSerializer(data=request.data)
+            if not serializer.is_valid():
+                logger.error(f"Validation errors: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            tb = traceback.format_exc()
+            logger.error(f"Login unhandled exception:\n{tb}")
+            print(f"LOGIN ERROR:\n{tb}", file=sys.stderr)
+            return Response({
+                "detail": f"Database/Server error: {str(e)}",
+                "error_type": type(e).__name__
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 # ==================== TEACHER QUIZ VIEWS ====================
 

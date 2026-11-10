@@ -1169,8 +1169,8 @@ class LoginSerializer(serializers.Serializer):
 
         elif user.role == "TEACHER":
             profile = {
-                "subjects": user.subjects.values("id", "name"),
-                "advisory_sections": user.advised_sections.values("id", "name"),
+                "subjects": list(user.subjects.values("id", "name")),
+                "advisory_sections": list(user.advised_sections.values("id", "name")),
             }
 
         elif user.role == "ADMIN":
