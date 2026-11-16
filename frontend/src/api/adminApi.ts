@@ -535,3 +535,61 @@ export async function getActiveAcademicTerm(): Promise<ActiveAcademicTerm> {
   }
   return res.json();
 }
+
+
+// ==================== AI RISK SUMMARY (ADMIN) ====================
+
+export interface AtRiskSectionSummary {
+  section_name: string;
+  total_evaluated: number;
+  high_risk: number;
+  medium_risk: number;
+  low_risk: number;
+  avg_grade: number;
+}
+
+export interface AdminAIRiskSummary {
+  status: "OPERATIONAL" | "AWAITING_ASSESSMENTS";
+  status_message: string;
+  model_name: string;
+  policy_framework: string;
+  total_students: number;
+  total_sections: number;
+  total_offerings: number;
+  forecast_count: number;
+  high_risk_count: number;
+  medium_risk_count: number;
+  low_risk_count: number;
+  average_predicted_grade: number | null;
+  at_risk_sections: AtRiskSectionSummary[];
+}
+
+/**
+ * Fetch macro school-wide AI grade forecasting and at-risk learner overview for administrators.
+ */
+export async function getAdminAIRiskSummary(): Promise<AdminAIRiskSummary> {
+  const res = await authFetch("/admin/ai-risk-summary/");
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    throw new Error(`Failed to load AI risk summary: ${err || res.statusText}`);
+  }
+  return res.json();
+}
+
+/**
+ * Trigger an institutional diagnostic scan, demo simulation, or cache reset.
+ */
+export async function triggerAdminAIDiagnosticScan(
+  action: "scan" | "seed_sample" | "reset" = "scan"
+): Promise<{ message: string; [key: string]: any }> {
+  const res = await authFetch("/admin/ai-risk-summary/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    throw new Error(`Failed to execute diagnostic action: ${err || res.statusText}`);
+  }
+  return res.json();
+}
