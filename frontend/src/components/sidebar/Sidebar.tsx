@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { navigation } from "../../data/navigation";
 
@@ -18,11 +19,18 @@ const Sidebar: React.FC<SidebarProps> = ({
   open = false,
   onClose = () => {},
 }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const activeLinks = user?.role
     ? navigation[user.role] ?? []
     : [];
+
+  const handleLogout = () => {
+    onClose();
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <>
@@ -47,6 +55,15 @@ const Sidebar: React.FC<SidebarProps> = ({
             </nav>
           </div>
         </aside>
+      )}
+
+      {/* Mobile Drawer */}
+      {!isDesktop && open && (
+        <MobileDrawer
+          links={activeLinks}
+          onClose={onClose}
+          onLogout={handleLogout}
+        />
       )}
     </>
   );
