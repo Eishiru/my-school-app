@@ -1,26 +1,26 @@
 ========================================================================================
  CLAROED SYSTEM - COMPREHENSIVE FUNCTIONAL VERIFICATION SUITE
  DepEd Order No. 8, s. 2015 | ISO/IEC 25010:2023 | 102 Test Cases
- Execution Timestamp: 2026-11-10 01:59:57
+ Execution Timestamp: 2026-11-16 17:53:53
 ========================================================================================
 
 
 >>> MODULE 1: USER & ACADEMIC STRUCTURE MANAGEMENT (FR-01) [12 TEST CASES]
-  [PASS] TC-UAM-01: Admin user creation with valid credential attributes (525.2ms)
-  [PASS] TC-UAM-02: Duplicate email constraint enforcement (431.9ms)
-  [PASS] TC-UAM-03: PBKDF2 password hash verification (1122.2ms)
-  [PASS] TC-UAM-04: Invalid password authentication rejection (1121.3ms)
-  [PASS] TC-UAM-05: School / Academic Year boundary date and naming validation (0.2ms)
-  [PASS] TC-UAM-06: Active Academic Semester status toggle (0.0ms)
+  [PASS] TC-UAM-01: Admin user creation with valid credential attributes (720.1ms)
+  [PASS] TC-UAM-02: Duplicate email constraint enforcement (563.6ms)
+  [PASS] TC-UAM-03: PBKDF2 password hash verification (1358.2ms)
+  [PASS] TC-UAM-04: Invalid password authentication rejection (1458.2ms)
+  [PASS] TC-UAM-05: School / Academic Year boundary date and naming validation (0.1ms)
+  [PASS] TC-UAM-06: Active Academic Semester status toggle (0.1ms)
   [PASS] TC-UAM-07: Grade Level & Section hierarchy setup (Grades 7 to 10) (0.0ms)
   [PASS] TC-UAM-08: Student enrollment & section membership binding (0.1ms)
   [PASS] TC-UAM-09: Teacher faculty profile and role association (0.0ms)
   [PASS] TC-UAM-10: Subject Offering linking Subject, Section, and Teacher (0.1ms)
   [PASS] TC-UAM-11: Role boundary enforcement (student forbidden from administrative setup) (0.0ms)
-  [PASS] TC-UAM-12: Cryptographic salt & one-way password encryption verification (586.9ms)
+  [PASS] TC-UAM-12: Cryptographic salt & one-way password encryption verification (617.8ms)
 
 >>> MODULE 2: LEARNING MATERIAL MANAGEMENT (FR-02) [11 TEST CASES]
-  [PASS] TC-LMM-01: Learning material module creation with instructional objectives (0.1ms)
+  [PASS] TC-LMM-01: Learning material module creation with instructional objectives (0.2ms)
   [PASS] TC-LMM-02: Document attachment verification (PDF, DOCX formats) (0.0ms)
   [PASS] TC-LMM-03: Learning material association with specific Subject Offering (0.1ms)
   [PASS] TC-LMM-04: Publication status toggle and file presence verification (0.0ms)
@@ -40,8 +40,8 @@
   [PASS] TC-ACT-05: Digital submission prior to deadline marked ON_TIME (0.0ms)
   [PASS] TC-ACT-06 (Defect Retest): Attachment filename with spaces and special characters (0.1ms)
   [PASS] TC-ACT-07: Digital submission recorded past deadline marked LATE (0.0ms)
-  [PASS] TC-ACT-08: Valid zero-score submission acceptance (0.0ms)
-  [PASS] TC-ACT-09: Perfect score boundary validation (score == total_points) (0.0ms)
+  [PASS] TC-ACT-08: Valid zero-score submission acceptance (0.1ms)
+  [PASS] TC-ACT-09: Perfect score boundary validation (score == total_points) (0.1ms)
   [PASS] TC-ACT-10: Score exceeding maximum possible points rejected (0.0ms)
   [PASS] TC-ACT-11: Teacher grading recording score, feedback notes, and timestamp (0.0ms)
   [PASS] TC-ACT-12 (Defect Retest): Same-minute deadline submission precision (0.0ms)
@@ -61,7 +61,7 @@
   [PASS] TC-GB-08: Incomplete status indicator when mandatory scores missing (0.0ms)
   [PASS] TC-GB-09 (Defect Retest): Whitespace-padded numerical string parsing (0.0ms)
   [PASS] TC-GB-10: Batch score saving and atomic database transaction (0.1ms)
-  [PASS] TC-GB-11: Audit log generation upon score change (GradeChangeLog) (0.0ms)
+  [PASS] TC-GB-11: Audit log generation upon score change (GradeChangeLog) (0.1ms)
   [PASS] TC-GB-12: Teacher gradebook isolation (Teacher A cannot edit Teacher B's section) (0.0ms)
   [PASS] TC-GB-13: Student role forbidden from accessing gradebook edit endpoints (0.0ms)
   [PASS] TC-GB-14: Gradebook view filtered by active academic term/quarter (0.0ms)
@@ -113,15 +113,15 @@
   [PASS] TC-AI-01: Eligibility verification barrier: assessment threshold completion (0.0ms)
   [PASS] TC-AI-02: Eligibility barrier block: insufficient assessments returns NOT_ELIGIBLE (0.0ms)
   [PASS] TC-AI-03: Multimodal student feature vector extraction (0.0ms)
-  [PASS] TC-AI-04: Random Forest / Gradient Boosting model inference pipeline execution (14726.8ms)
+  [PASS] TC-AI-04: Random Forest / Gradient Boosting model inference pipeline execution (4368.0ms)
   [PASS] TC-AI-05: Regression output bounding (forecast grade constrained within [60, 100]) (0.0ms)
   [PASS] TC-AI-06: At-Risk diagnostic flag triggering (predicted grade < 75 -> HIGH RISK) (0.0ms)
   [PASS] TC-AI-07: On-Track status classification (predicted grade >= 75 -> LOW RISK) (0.0ms)
-  [PASS] TC-AI-08: Pedagogical recommendation generation based on component gaps (10.4ms)
-  [PASS] TC-AI-09: Model inference latency benchmark (< 1000 ms response time) (127.7ms)
+  [PASS] TC-AI-08: Pedagogical recommendation generation based on component gaps (14.6ms)
+  [PASS] TC-AI-09: Model inference latency benchmark (< 1000 ms response time) (155.7ms)
   [PASS] TC-AI-10: Advisory-only non-determinism barrier (forecast NEVER overwrites official grades) (0.0ms)
   [PASS] TC-AI-11: Teacher section forecast aggregation with risk priority sorting (0.0ms)
-  [PASS] TC-AI-12: Model artifact integrity verification (file existence & schema match) (0.4ms)
+  [PASS] TC-AI-12: Model artifact integrity verification (file existence & schema match) (1.1ms)
 
 ========================================================================================
  FINAL EXECUTION SUMMARY
@@ -133,6 +133,6 @@
  Final Passed Cases:        102
  Final Failed Cases:        0
  Final System Pass Rate:    100.0%
- Total Execution Duration:  18.66 seconds
+ Total Execution Duration:  9.26 seconds
  Status:                    ALL 102 TEST CASES PASSED SUCCESSFULLY (100.0% VERIFIED)
 ========================================================================================

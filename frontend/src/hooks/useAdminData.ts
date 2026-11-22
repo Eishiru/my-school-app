@@ -40,6 +40,10 @@ import {
   SemesterData,
   SchoolYearData,
   ActiveAcademicTerm,
+  getAdminAIRiskSummary,
+  triggerAdminAIDiagnosticScan,
+  AdminAIRiskSummary,
+  AtRiskSectionSummary,
 } from "../api/adminApi";
 
 export type {
@@ -53,6 +57,8 @@ export type {
   SemesterData,
   SchoolYearData,
   ActiveAcademicTerm,
+  AdminAIRiskSummary,
+  AtRiskSectionSummary,
 };
 
 // ==================== QUERIES ====================
@@ -501,6 +507,33 @@ export function useActivateSemester() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "academicYears"] });
       queryClient.invalidateQueries({ queryKey: ["academicTerm", "active"] });
+    },
+  });
+}
+
+
+/**
+ * Fetch school-wide AI grade forecasting and at-risk learner overview for administrators.
+ */
+export function useAdminAIRiskSummary() {
+  return useQuery<AdminAIRiskSummary>({
+    queryKey: ["admin", "aiRiskSummary"],
+    queryFn: getAdminAIRiskSummary,
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * Trigger an institutional diagnostic scan, demo simulation, or reset.
+ */
+export function useTriggerAdminAIDiagnostic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (action?: "scan" | "seed_sample" | "reset") =>
+      triggerAdminAIDiagnosticScan(action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "aiRiskSummary"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "stats"] });
     },
   });
 }

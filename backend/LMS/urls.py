@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from .views import GradeChangeLogViewSet, StudentSubjectOfferingViewSet, StudentViewSet, SubjectOfferingViewSet, SubjectViewSet, TeacherQuizViewSet, TeacherSubjectListViewSet, TeacherViewSet, ai_chat, current_student, explain_concept, generate_quiz, generate_study_plan, grade_forecast, import_students_excel, list_users, LoginView, create_user, manage_quiz_question, provide_feedback, quarterly_grade_detail, quarterly_grades, quiz_item_analysis, start_quiz, student_grade_analytics, student_quiz_attempts, student_quiz_attempt_detail, student_quiz_detail, student_quiz_review, student_quizzes, student_topic_performance, submit_quiz, user_detail, SectionViewSet, AdminDashboardStatsView, SchoolYearViewSet
+from .views import GradeChangeLogViewSet, StudentSubjectOfferingViewSet, StudentViewSet, SubjectOfferingViewSet, SubjectViewSet, TeacherQuizViewSet, TeacherSubjectListViewSet, TeacherViewSet, ai_chat, current_student, explain_concept, generate_quiz, generate_study_plan, grade_forecast, import_students_excel, list_users, LoginView, create_user, manage_quiz_question, provide_feedback, quarterly_grade_detail, quarterly_grades, quiz_item_analysis, start_quiz, student_grade_analytics, student_quiz_attempts, student_quiz_attempt_detail, student_quiz_detail, student_quiz_review, student_quizzes, student_topic_performance, submit_quiz, user_detail, SectionViewSet, AdminDashboardStatsView, SchoolYearViewSet, AdminAIRiskSummaryView
 
 from .views import teacher_submissions_summary, teacher_submissions_subject_detail, teacher_submissions_export_csv, quarterly_grades_bulk_apply_weights
 
@@ -25,6 +25,7 @@ urlpatterns = [
     path("user/<int:pk>/", user_detail),
     path("", include(router.urls)),
     path("dashboard/stats/", AdminDashboardStatsView.as_view()),
+    path("admin/ai-risk-summary/", AdminAIRiskSummaryView.as_view(), name="admin_ai_risk_summary"),
     path("user/import-students/", import_students_excel),
     path("teacher/submissions/summary/", teacher_submissions_summary),
     path("teacher/submissions/subject/<int:subject_offering_id>/", teacher_submissions_subject_detail),

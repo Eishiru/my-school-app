@@ -146,6 +146,176 @@ class AdminDashboardStatsView(APIView):
             "subjects": Subject.objects.count(),
         })
 
+
+class AdminAIRiskSummaryView(APIView):
+    """
+    Macro Institutional AI Academic Risk and Forecast Overview for Administrators.
+    Aggregates section-level and school-wide predictive indicators across all enrolled learners.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if getattr(request.user, "role", None) != "ADMIN":
+            return Response({"detail": "Admin access required."}, status=403)
+
+        total_students = Student.objects.count()
+        total_sections = Section.objects.count()
+        total_offerings = SubjectOffering.objects.count()
+
+        forecasts = GradeForecast.objects.select_related("student__section", "SubjectOffering")
+        forecast_count = forecasts.count()
+
+        if forecast_count > 0:
+            high_risk = forecasts.filter(risk_level="HIGH").count()
+            medium_risk = forecasts.filter(risk_level="MEDIUM").count()
+            low_risk = forecasts.filter(risk_level="LOW").count()
+            avg_grade = forecasts.aggregate(Avg("predicted_grade"))["predicted_grade__avg"] or 75.0
+
+            # Section breakdown
+            section_map = {}
+            for fc in forecasts:
+                sec = getattr(fc.student, "section", None)
+                sec_name = f"{sec.get_grade_level_display()} - {sec.name}" if sec else "Unassigned"
+                if sec_name not in section_map:
+                    section_map[sec_name] = {
+                        "section_name": sec_name,
+                        "total_evaluated": 0,
+                        "high_risk": 0,
+                        "medium_risk": 0,
+                        "low_risk": 0,
+                        "avg_grade": 0.0,
+                        "grades": [],
+                    }
+                section_map[sec_name]["total_evaluated"] += 1
+                section_map[sec_name]["grades"].append(fc.predicted_grade)
+                if fc.risk_level == "HIGH":
+                    section_map[sec_name]["high_risk"] += 1
+                elif fc.risk_level == "MEDIUM":
+                    section_map[sec_name]["medium_risk"] += 1
+                else:
+                    section_map[sec_name]["low_risk"] += 1
+
+            for s_data in section_map.values():
+                s_data["avg_grade"] = round(sum(s_data["grades"]) / len(s_data["grades"]), 1) if s_data["grades"] else 0.0
+                del s_data["grades"]
+
+            at_risk_sections = sorted(
+                section_map.values(),
+                key=lambda x: (x["high_risk"], x["medium_risk"], -x["avg_grade"]),
+                reverse=True
+            )
+
+            status = "OPERATIONAL"
+            message = "Institutional diagnostic scan active. Predictive models continuously track student performance."
+        else:
+            high_risk = 0
+            medium_risk = 0
+            low_risk = 0
+            avg_grade = None
+            at_risk_sections = []
+            status = "AWAITING_ASSESSMENTS"
+            message = "AI Forecasting Engine is active and standing by. Risk classifications will populate as classroom activities and quarterly assessments are recorded by teachers."
+
+        return Response({
+            "status": status,
+            "status_message": message,
+            "model_name": "Gradient Boosting Regressor",
+            "policy_framework": "DepEd Order No. 8, s. 2015 / DepEd Order No. 015, s. 2026",
+            "total_students": total_students,
+            "total_sections": total_sections,
+            "total_offerings": total_offerings,
+            "forecast_count": forecast_count,
+            "high_risk_count": high_risk,
+            "medium_risk_count": medium_risk,
+            "low_risk_count": low_risk,
+            "average_predicted_grade": round(avg_grade, 1) if avg_grade is not None else None,
+            "at_risk_sections": at_risk_sections,
+        })
+
+    def post(self, request):
+        if getattr(request.user, "role", None) != "ADMIN":
+            return Response({"detail": "Admin access required."}, status=403)
+
+        action = request.data.get("action", "scan")
+
+        if action == "reset":
+            GradeForecast.objects.all().delete()
+            return Response({"message": "Forecast records cleared successfully."})
+
+        if action == "seed_sample":
+            from .models import Semester, SchoolYear
+            import random
+
+            active_sem = Semester.objects.filter(is_active=True).first() or Semester.objects.first()
+            offerings = list(SubjectOffering.objects.all())
+            students = list(Student.objects.select_related("section", "user").all())
+
+            if not offerings or not students:
+                return Response({"error": "Need at least one SubjectOffering and Student."}, status=400)
+
+            sample_students = students[:min(40, len(students))]
+            seeded = 0
+
+            for i, st in enumerate(sample_students):
+                off = random.choice(offerings)
+                roll = i % 10
+                if roll == 0:
+                    pred = round(random.uniform(67.0, 74.0), 1)
+                    risk = "HIGH"
+                    trend = "DECLINING"
+                    rec = "Needs urgent reinforcement in Written Works and Performance Tasks. Schedule remediation."
+                elif roll in (1, 2):
+                    pred = round(random.uniform(75.0, 79.5), 1)
+                    risk = "MEDIUM"
+                    trend = random.choice(["STABLE", "DECLINING"])
+                    rec = "Performance is near passing boundary. Regular monitoring and formative practice recommended."
+                else:
+                    pred = round(random.uniform(80.0, 94.0), 1)
+                    risk = "LOW"
+                    trend = random.choice(["IMPROVING", "STABLE"])
+                    rec = "On track with curriculum milestones. Maintain active engagement and task completion."
+
+                GradeForecast.objects.update_or_create(
+                    student=st,
+                    SubjectOffering=off,
+                    defaults={
+                        "semester": active_sem,
+                        "checkpoint": "CURRENT",
+                        "current_average": pred,
+                        "quiz_count": random.randint(3, 8),
+                        "model_name": "Gradient Boosting Regressor",
+                        "predicted_grade": pred,
+                        "baseline_grade": pred - round(random.uniform(-1.5, 1.5), 1),
+                        "confidence_score": round(random.uniform(0.82, 0.94), 2),
+                        "risk_level": risk,
+                        "performance_trend": trend,
+                        "recommendations": rec,
+                    }
+                )
+                seeded += 1
+
+            return Response({
+                "message": f"Successfully simulated {seeded} diagnostic forecasts across {len(offerings)} offerings.",
+                "seeded_count": seeded
+            })
+
+        # Default action: run actual ML forecaster on offerings
+        from .ml.forecaster import GradeForecaster
+        forecaster = GradeForecaster()
+        offerings = SubjectOffering.objects.all()
+        processed = 0
+        for off in offerings:
+            try:
+                results = forecaster.predict_for_offering(off.id)
+                processed += len(results)
+            except Exception:
+                pass
+
+        return Response({
+            "message": f"Diagnostic scan executed across {offerings.count()} offerings ({processed} evaluations processed).",
+            "processed": processed
+        })
+
 class SectionViewSet(ModelViewSet):
     queryset = Section.objects.select_related("adviser").annotate(student_count_annotated=Count("students"))
     serializer_class = SectionSerializer

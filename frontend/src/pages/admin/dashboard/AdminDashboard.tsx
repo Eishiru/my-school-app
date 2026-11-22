@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import AIRiskOverviewCard from "./AIRiskOverviewCard";
 import { Link } from "react-router-dom";
 import {
   GraduationCap,
@@ -196,7 +197,10 @@ const AdminDashboard: React.FC = () => {
         })}
       </div>
 
-      {/* 3) Main Content Grid: Recent Accounts & Recent Grade Logs */}
+      {/* 3) Institutional AI Academic Risk & Forecast Overview */}
+      <AIRiskOverviewCard />
+
+      {/* 4) Main Content Grid: Recent Accounts & Recent Grade Logs */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Recent Accounts Panel */}
         <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden flex flex-col">
