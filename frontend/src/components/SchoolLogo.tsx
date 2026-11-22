@@ -5,8 +5,6 @@ export const SchoolLogo = ({ className = "" }: { className?: string }) => (
       <span className="text-sm font-black tracking-wide text-white">
         CMR
       </span>
-
-      
     </div>
 
     {/* Brand */}

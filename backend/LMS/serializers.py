@@ -298,17 +298,27 @@ class SubjectOfferingSerializer(serializers.ModelSerializer):
     )
         return offering
     def get_students(self, obj):
+        if hasattr(obj, 'annotated_student_count'):
+            return obj.annotated_student_count or 0
         return obj.section.students.count()
+
     def get_average(self, obj):
+        if hasattr(obj, 'annotated_average'):
+            avg = obj.annotated_average
+            return round(avg, 2) if avg is not None else None
+        
         qs = QuarterlyGrade.objects.filter(
-        SubjectOffering=obj,
-        final_grade__isnull=False,
-        semester__school_year__is_active=True,
-    )
+            SubjectOffering=obj,
+            final_grade__isnull=False,
+            semester__school_year__is_active=True,
+        )
         avg = qs.aggregate(a=Avg("final_grade"))["a"]
         return round(avg, 2) if avg is not None else None
+
     def get_pendingTasks(self, obj):
-        # Count submissions awaiting teacher manual grading
+        if hasattr(obj, 'annotated_pending_tasks'):
+            return obj.annotated_pending_tasks or 0
+            
         return QuizAttempt.objects.filter(
             quiz__SubjectOffering=obj,
             status='SUBMITTED',
@@ -364,16 +374,35 @@ class SubjectListSerializer(serializers.ModelSerializer):
         return obj.section.get_grade_level_display().replace("Grade ", "")
 
     def get_students(self, obj):
-        # TODO: Replace with real enrollment count
-        return 35
+        if hasattr(obj, 'annotated_student_count'):
+            return obj.annotated_student_count or 0
+        return obj.section.students.count()
 
     def get_average(self, obj):
-        # TODO: Replace with real grade computation
-        return 88
+        if hasattr(obj, 'annotated_average'):
+            avg = obj.annotated_average
+            return round(avg, 2) if avg is not None else None
+        
+        # Fallback (may cause N+1 if annotations are missing)
+        from django.db.models import Avg
+        qs = QuarterlyGrade.objects.filter(
+            SubjectOffering=obj,
+            final_grade__isnull=False,
+            semester__school_year__is_active=True,
+        )
+        avg = qs.aggregate(a=Avg("final_grade"))["a"]
+        return round(avg, 2) if avg is not None else None
 
     def get_pendingTasks(self, obj):
-        # TODO: Replace with real grading logic
-        return 3
+        if hasattr(obj, 'annotated_pending_tasks'):
+            return obj.annotated_pending_tasks or 0
+        
+        return QuizAttempt.objects.filter(
+            quiz__SubjectOffering=obj,
+            status='SUBMITTED',
+            answers__question__question_type='SHORT_ANSWER',
+            answers__manually_graded=False
+        ).distinct().count()
 
 class StudentSubjectOfferingSerializer(serializers.ModelSerializer):
     subject_name = serializers.CharField(source="name", read_only=True)
@@ -984,10 +1013,10 @@ class QuarterlyGradeSerializer(serializers.ModelSerializer):
             'performance_task_score', 'performance_task_total',
             'quarterly_assessment_score', 'quarterly_assessment_total',
             'ww_weight', 'pt_weight', 'qa_weight',
-            'final_grade', 'remarks',
+            'initial_grade', 'transmuted_grade', 'final_grade', 'remarks',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['final_grade', 'created_at', 'updated_at']
+        read_only_fields = ['initial_grade', 'transmuted_grade', 'final_grade', 'created_at', 'updated_at']
     
     def get_student_name(self, obj):
         """Get student's full name"""
@@ -1140,8 +1169,8 @@ class LoginSerializer(serializers.Serializer):
 
         elif user.role == "TEACHER":
             profile = {
-                "subjects": user.subjects.values("id", "name"),
-                "advisory_sections": user.advised_sections.values("id", "name"),
+                "subjects": list(user.subjects.values("id", "name")),
+                "advisory_sections": list(user.advised_sections.values("id", "name")),
             }
 
         elif user.role == "ADMIN":

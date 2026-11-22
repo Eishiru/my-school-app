@@ -7,5 +7,4 @@
 **/*.pyc
 **/*.sqlite3
 backend/media/**
-backend/staticfiles/**
 frontend/dist/**
