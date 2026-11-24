@@ -14,7 +14,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { generateBanigPDF } from "./BanigExportPage";
+import { generateBanigPDF, generateBanigExcel } from "./BanigExportPage";
 import {
   useAdvisoryStudents,
   useStudentSemesterSummary,
@@ -103,6 +103,7 @@ export default function AdvisoryClass() {
   const teacherId = getCurrentTeacherId();
   const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { data: activeTerm } = useActiveAcademicTerm();
 
@@ -211,27 +212,51 @@ export default function AdvisoryClass() {
           </p>
         </div>
 
-        <button
-          type="button"
-          disabled={exporting || students.length === 0}
-          onClick={async () => {
-            try {
-              setExporting(true);
-              await generateBanigPDF({
-                queryClient,
-                teacher,
-                students,
-                schoolYear: activeTerm?.school_year?.name,
-              });
-            } finally {
-              setExporting(false);
-            }
-          }}
-          className="inline-flex items-center gap-2 self-start md:self-auto px-4 py-2 bg-white border border-slate-200/80 text-slate-700 text-xs font-semibold rounded-lg shadow-xs hover:bg-slate-50 disabled:opacity-50 transition-colors"
-        >
-          <Download size={14} className="text-indigo-600" />
-          <span>{exporting ? "Generating Banig PDF..." : "Export Banig (Summary)"}</span>
-        </button>
+        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+          <button
+            type="button"
+            disabled={exportingExcel || students.length === 0}
+            onClick={async () => {
+              try {
+                setExportingExcel(true);
+                await generateBanigExcel({
+                  queryClient,
+                  teacher,
+                  students,
+                  schoolYear: activeTerm?.school_year?.name,
+                });
+              } finally {
+                setExportingExcel(false);
+              }
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs disabled:opacity-50 transition-colors"
+          >
+            <Download size={14} />
+            <span>{exportingExcel ? "Generating Banig Excel..." : "Export Banig (Excel)"}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={exporting || students.length === 0}
+            onClick={async () => {
+              try {
+                setExporting(true);
+                await generateBanigPDF({
+                  queryClient,
+                  teacher,
+                  students,
+                  schoolYear: activeTerm?.school_year?.name,
+                });
+              } finally {
+                setExporting(false);
+              }
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200/80 text-slate-700 text-xs font-semibold rounded-lg shadow-xs hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          >
+            <Download size={14} className="text-indigo-600" />
+            <span>{exporting ? "Generating Banig PDF..." : "Export Banig (PDF)"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Search & Filter Bar */}

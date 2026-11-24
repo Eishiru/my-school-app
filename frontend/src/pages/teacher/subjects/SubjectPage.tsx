@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Users, FileText, TrendingUp, BookOpen, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Users, FileText, TrendingUp, BookOpen, type LucideIcon, ArrowRight, Clock } from "lucide-react";
 import {useRecentQuizGrades, useTeacherSubject, useTeacherSubjectQuizzes} from "../../../hooks/useTeacherSubjects";
 
 import type { QuizStatus } from "../../../types/teacherTypes";
@@ -272,6 +272,9 @@ export default function SubjectPage() {
               <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">
                 Quizzes
               </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Showing {Math.min(quizzes.length, 5)} of {quizzes.length} quizzes
+              </p>
 
               <Link
                 to={`/teacher/subject/${subjectId}/activities`}
@@ -361,86 +364,116 @@ export default function SubjectPage() {
           </div>
 
           {/* RIGHT: Recent Grades */}
-          <div className="lg:col-span-4 space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100">
-                <div className="text-sm font-black text-slate-900 uppercase tracking-widest">
-                  Recent Quiz Grades
+          
+          <div className="lg:col-span-4">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Recent Quiz Grades
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Latest student submissions
+                  </p>
                 </div>
 
-                <div className="text-xs text-slate-500 mt-1">
-                  Latest 5 submissions
-                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">
+                  {Math.min(recent.length, 5)} submissions
+                </span>
               </div>
 
-              {recentLoading ? (
-                <div className="p-6 text-sm text-slate-500">
-                  Loading recent grades...
-                </div>
-              ) : recentError ? (
-                <div className="p-6 text-sm text-rose-600">
-                  Failed to load recent quiz grades.
-                </div>
-              ) : recent.length === 0 ? (
-                <div className="p-6 text-sm text-slate-600">
-                  No recent quiz grades yet.
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {recent
-                    .slice(0, 5)
-                    .map((grade, idx) => (
+              {/* Content */}
+              <div className="min-h-[180px]">
+
+                {recentLoading ? (
+                  <div className="p-8 flex flex-col items-center justify-center text-center">
+                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
+                    <p className="text-sm text-slate-500">
+                      Loading recent grades...
+                    </p>
+                  </div>
+                ) : recentError ? (
+                  <div className="p-8 text-center">
+                    <p className="text-sm font-medium text-rose-600">
+                      Failed to load recent quiz grades.
+                    </p>
+                  </div>
+                ) : recent.length === 0 ? (
+                  <div className="p-8 flex flex-col items-center justify-center text-center">
+                    <div className="w-11 h-11 rounded-xl bg-slate-50 flex items-center justify-center mb-3">
+                      <FileText className="w-5 h-5 text-slate-400" />
+                    </div>
+                    <p className="text-sm font-semibold text-slate-700">
+                      No quiz submissions yet
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Student quiz results will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {recent.slice(0, 5).map((grade, idx) => (
                       <div
                         key={idx}
-                        className="px-6 py-4"
+                        className="px-5 py-4 hover:bg-slate-50/70 transition-colors"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-bold text-slate-900 truncate">
-                              {grade.student}
-                            </div>
+                        <div className="flex items-center justify-between gap-4">
 
-                            <div className="text-xs text-slate-500 truncate">
+                          {/* Student Information */}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-slate-900 truncate">
+                              {grade.student}
+                            </p>
+
+                            <p className="text-xs text-slate-500 mt-1 truncate">
                               {grade.quiz}
-                            </div>
+                            </p>
                           </div>
 
-                          <div className="text-right shrink-0">
-                            <div className="font-black text-slate-900 text-sm">
-                              {grade.score}/
-                              {grade.total}
-                            </div>
+                          {/* Grade Information */}
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-extrabold text-slate-900 tabular-nums">
+                              {grade.score}/{grade.total}
+                            </p>
 
-                            <div className="text-xs text-slate-500">
-                              {Number(
-                                grade.percent
-                              ).toFixed(1)}
-                              %
-                            </div>
+                            <span className="inline-flex mt-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[11px] font-bold tabular-nums">
+                              {Number(grade.percent).toFixed(1)}%
+                            </span>
                           </div>
                         </div>
 
-                        {grade.submitted_at ? (
-                          <div className="mt-2 text-[11px] text-slate-400">
-                            Submitted:{" "}
-                            {new Date(
-                              grade.submitted_at
-                            ).toLocaleString()}
+                        {/* Submission Date */}
+                        {grade.submitted_at && (
+                          <div className="flex items-center gap-1.5 mt-3">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <p className="text-[11px] text-slate-400">
+                              Submitted:{" "}
+                              {new Date(grade.submitted_at).toLocaleString()}
+                            </p>
                           </div>
-                        ) : null}
+                        )}
                       </div>
                     ))}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
 
-              <Link
-                to={`/teacher/subject/${subjectId}/analytics`}
-                className="w-full mt-8 py-3.5 bg-slate-900 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl hover:bg-indigo-600 transition-all shadow-lg shadow-slate-200 block text-center"
-              >
-                Detailed Analytics
-              </Link>
+              {/* Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50/40">
+                <Link
+                  to={`/teacher/subject/${subjectId}/analytics`}
+                  className="w-full py-3 px-4 bg-slate-900 text-white text-[11px] font-extrabold uppercase tracking-[0.15em] rounded-xl hover:bg-indigo-600 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  Detailed Analytics
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+
             </div>
           </div>
+          
         </div>
       </main>
     </section>

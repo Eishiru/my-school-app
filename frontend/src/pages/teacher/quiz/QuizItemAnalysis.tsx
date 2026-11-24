@@ -14,7 +14,9 @@ import {
   Users,
   Percent,
   Sparkles,
+  Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useGenerateQuizAIAnalysis, useQuizItemAnalysis } from '../../../hooks/useTeacherSubjects';
 
 function SkeletonLine({ w = 'w-full' }: { w?: string }) {
@@ -195,6 +197,114 @@ export default function QuizItemAnalysis() {
     });
   };
 
+  const handleExportExcel = () => {
+    if (!data) return;
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Summary
+    const summaryData = [
+      ["Title", data.quiz_title],
+      ["ID", data.quiz_id],
+      ["Total Questions", data.total_questions],
+      ["Total Attempts", data.total_student_attempts],
+      ["Average Success", `${pct(avgSuccess)}%`],
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    wsSummary["!cols"] = [{ wch: 20 }, { wch: 35 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+    // Sheet 2: Item Analysis
+    const sortedQuestions = [...data.questions].sort((a, b) => a.order - b.order);
+    const itemAnalysisHeader = [
+      "#",
+      "Question",
+      "Type",
+      "Points",
+      "Attempts",
+      "Correct",
+      "Incorrect",
+      "MPS (%)",
+      "Difficulty",
+    ];
+    const itemAnalysisRows = sortedQuestions.map((q, idx) => {
+      const isScores = q.analysis_mode === "SCORES";
+      const successPct = isScores
+        ? (() => {
+            const max = q.max_points ?? q.points ?? 0;
+            const avg = q.avg_score ?? 0;
+            return max > 0 ? (avg / max) * 100 : 0;
+          })()
+        : (q.correct_percentage || 0);
+
+      return [
+        idx + 1,
+        q.question_text,
+        q.question_type.replace(/_/g, " "),
+        q.points,
+        q.total_attempts,
+        isScores ? (q.graded_count ?? 0) : q.correct_count,
+        isScores ? (q.pending_count ?? 0) : q.incorrect_count,
+        parseFloat(pct(successPct)),
+        q.difficulty,
+      ];
+    });
+    const wsItemAnalysis = XLSX.utils.aoa_to_sheet([itemAnalysisHeader, ...itemAnalysisRows]);
+    wsItemAnalysis["!cols"] = [
+      { wch: 5 },
+      { wch: 45 },
+      { wch: 18 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 14 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsItemAnalysis, "Item Analysis");
+
+    // Sheet 3: Option Frequency
+    const optionFrequencyHeader = [
+      "Q#",
+      "Question Text",
+      "Choice Text",
+      "Count",
+      "Frequency (%)",
+      "Is Correct",
+    ];
+    const optionFrequencyRows: any[][] = [];
+    sortedQuestions.forEach((q, idx) => {
+      const choiceDist = q.choice_distribution || {};
+      Object.entries(choiceDist).forEach(([choiceText, stats]) => {
+        optionFrequencyRows.push([
+          idx + 1,
+          q.question_text,
+          choiceText,
+          stats.count,
+          parseFloat(pct(stats.percentage)),
+          stats.is_correct ? "YES" : "NO",
+        ]);
+      });
+    });
+
+    const wsOptionFrequency = XLSX.utils.aoa_to_sheet([
+      optionFrequencyHeader,
+      ...optionFrequencyRows,
+    ]);
+    wsOptionFrequency["!cols"] = [
+      { wch: 6 },
+      { wch: 40 },
+      { wch: 30 },
+      { wch: 10 },
+      { wch: 15 },
+      { wch: 12 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsOptionFrequency, "Option Frequency");
+
+    const safeTitle = (data.quiz_title || "Quiz").replace(/[^a-zA-Z0-9_\-]/g, "_");
+    XLSX.writeFile(wb, `ItemAnalysis_${safeTitle}_${data.quiz_id}.xlsx`);
+  };
+
 
   if (isLoading) {
     return (
@@ -309,15 +419,26 @@ export default function QuizItemAnalysis() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleGenerateAI}
-              disabled={generateAI.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              <Sparkles size={14} className={generateAI.isPending ? "animate-spin" : ""} />
-              <span>{generateAI.isPending ? "Generating AI Insight..." : "Generate AI Insight"}</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 transition-colors"
+              >
+                <Download size={14} />
+                <span>Export to Excel</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGenerateAI}
+                disabled={generateAI.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                <Sparkles size={14} className={generateAI.isPending ? "animate-spin" : ""} />
+                <span>{generateAI.isPending ? "Generating AI Insight..." : "Generate AI Insight"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
