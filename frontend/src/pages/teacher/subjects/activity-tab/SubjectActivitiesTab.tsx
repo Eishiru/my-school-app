@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Link,
   useParams,
@@ -8,6 +8,8 @@ import {
   FileQuestion,
   Calendar,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import {
@@ -39,6 +41,14 @@ export default function SubjectActivitiesTab() {
       )
     );
   }, [activities]);
+
+  const [page, setPage] = useState(1);
+  const ACTIVITIES_PER_PAGE = 8;
+  const totalPages = Math.max(1, Math.ceil(sortedActivities.length / ACTIVITIES_PER_PAGE));
+  const paginatedActivities = useMemo(() => {
+    const start = (page - 1) * ACTIVITIES_PER_PAGE;
+    return sortedActivities.slice(start, start + ACTIVITIES_PER_PAGE);
+  }, [sortedActivities, page]);
 
   const handleDelete = (
     activityId: number
@@ -157,122 +167,160 @@ export default function SubjectActivitiesTab() {
               </div>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {sortedActivities.map(
-                (activity) => {
-                  const isDeleting =
-                    deleteActivity.isPending &&
-                    deleteActivity.variables
-                      ?.activityId ===
-                      activity.id;
+            <>
+              <div className="divide-y divide-slate-100">
+                {paginatedActivities.map(
+                  (activity) => {
+                    const isDeleting =
+                      deleteActivity.isPending &&
+                      deleteActivity.variables
+                        ?.activityId ===
+                        activity.id;
 
-                  return (
-                    <div
-                      key={activity.id}
-                      className="p-5 flex items-start justify-between gap-4 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 h-9 w-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600 shrink-0">
-                            <FileQuestion
-                              size={16}
-                            />
-                          </div>
-
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link
-                                to={`/teacher/activities/${activity.id}`}
-                                className="font-black text-slate-900 truncate hover:underline"
-                                title={
-                                  activity.title
-                                }
-                              >
-                                {
-                                  activity.title
-                                }
-                              </Link>
-
-                              <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-amber-100 text-amber-700">
-                                Quiz
-                              </span>
-
-                              {activity.status ? (
-                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-slate-100 text-slate-600">
-                                  {
-                                    activity.status
-                                  }
-                                </span>
-                              ) : null}
+                    return (
+                      <div
+                        key={activity.id}
+                        className="p-5 flex items-start justify-between gap-4 hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 h-9 w-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600 shrink-0">
+                              <FileQuestion
+                                size={16}
+                              />
                             </div>
 
-                            {activity.description ? (
-                              <p className="text-sm text-slate-500 mt-1 line-clamp-2">
-                                {
-                                  activity.description
-                                }
-                              </p>
-                            ) : null}
-
-                            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                              <span className="inline-flex items-center gap-2">
-                                <Calendar
-                                  size={14}
-                                />
-
-                                {activity.open_time
-                                  ? new Date(
-                                      activity.open_time
-                                    ).toLocaleString()
-                                  : "No date"}
-                              </span>
-
-                              {typeof activity.total_points ===
-                              "number" ? (
-                                <span className="inline-flex items-center gap-1">
-                                  <span className="h-1 w-1 rounded-full bg-slate-300" />
-
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Link
+                                  to={`/teacher/activities/${activity.id}`}
+                                  className="font-black text-slate-900 truncate hover:underline"
+                                  title={
+                                    activity.title
+                                  }
+                                >
                                   {
-                                    activity.total_points
-                                  }{" "}
-                                  pts
+                                    activity.title
+                                  }
+                                </Link>
+
+                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                                  Quiz
                                 </span>
+
+                                {activity.status ? (
+                                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+                                    {
+                                      activity.status
+                                    }
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {activity.description ? (
+                                <p className="text-sm text-slate-500 mt-1 line-clamp-2">
+                                  {
+                                    activity.description
+                                  }
+                                </p>
                               ) : null}
+
+                              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                <span className="inline-flex items-center gap-2">
+                                  <Calendar
+                                    size={14}
+                                  />
+
+                                  {activity.open_time
+                                    ? new Date(
+                                        activity.open_time
+                                      ).toLocaleString()
+                                    : "No date"}
+                                </span>
+
+                                {typeof activity.total_points ===
+                                "number" ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="h-1 w-1 rounded-full bg-slate-300" />
+
+                                    {
+                                      activity.total_points
+                                    }{" "}
+                                    pts
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="shrink-0">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDelete(
-                              activity.id
-                            )
-                          }
-                          disabled={
-                            isDeleting
-                          }
-                          className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 transition-colors disabled:opacity-50"
-                          title="Delete"
-                        >
-                          <Trash2
-                            size={18}
-                          />
-                        </button>
+                        <div className="shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDelete(
+                                activity.id
+                              )
+                            }
+                            disabled={
+                              isDeleting
+                            }
+                            className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 transition-colors disabled:opacity-50"
+                            title="Delete"
+                          >
+                            <Trash2
+                              size={18}
+                            />
+                          </button>
 
-                        {isDeleting ? (
-                          <div className="mt-1 text-[10px] text-slate-400 text-center">
-                            Deleting...
-                          </div>
-                        ) : null}
+                          {isDeleting ? (
+                            <div className="mt-1 text-[10px] text-slate-400 text-center">
+                              Deleting...
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  );
-                }
+                    );
+                  }
+                )}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs text-slate-600">
+                  <span>
+                    Showing <strong className="text-slate-800">{(page - 1) * ACTIVITIES_PER_PAGE + 1}</strong> to{" "}
+                    <strong className="text-slate-800">
+                      {Math.min(page * ACTIVITIES_PER_PAGE, sortedActivities.length)}
+                    </strong>{" "}
+                    of <strong className="text-slate-800">{sortedActivities.length}</strong> activities
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                    >
+                      <ChevronLeft size={14} />
+                      Prev
+                    </button>
+                    <span className="px-2 font-bold text-slate-700">
+                      {page} / {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                    >
+                      Next
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
               )}
-            </div>
+            </>
           )}
         </div>
       ) : null}

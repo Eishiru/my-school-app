@@ -1,6 +1,18 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Users, FileText, TrendingUp, BookOpen, type LucideIcon, ArrowRight, Clock } from "lucide-react";
+import {
+  ArrowLeft,
+  Users,
+  FileText,
+  TrendingUp,
+  BookOpen,
+  type LucideIcon,
+  ArrowRight,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+} from "lucide-react";
 import {useRecentQuizGrades, useTeacherSubject, useTeacherSubjectQuizzes} from "../../../hooks/useTeacherSubjects";
 
 import type { QuizStatus } from "../../../types/teacherTypes";
@@ -143,6 +155,23 @@ export default function SubjectPage() {
     };
   }, [offering, quizzes]);
 
+  // ---------------- Pagination ----------------
+  const [quizPage, setQuizPage] = useState(1);
+  const QUIZZES_PER_PAGE = 5;
+  const totalQuizPages = Math.max(1, Math.ceil(quizzes.length / QUIZZES_PER_PAGE));
+  const paginatedQuizzes = useMemo(() => {
+    const start = (quizPage - 1) * QUIZZES_PER_PAGE;
+    return quizzes.slice(start, start + QUIZZES_PER_PAGE);
+  }, [quizzes, quizPage]);
+
+  const [recentPage, setRecentPage] = useState(1);
+  const RECENT_PER_PAGE = 5;
+  const totalRecentPages = Math.max(1, Math.ceil(recent.length / RECENT_PER_PAGE));
+  const paginatedRecent = useMemo(() => {
+    const start = (recentPage - 1) * RECENT_PER_PAGE;
+    return recent.slice(start, start + RECENT_PER_PAGE);
+  }, [recent, recentPage]);
+
   // ---------------- Invalid ID ----------------
 
   if (!subjectId) {
@@ -265,215 +294,238 @@ export default function SubjectPage() {
         </div>
 
         {/* Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* LEFT: Quizzes */}
-          <div className="lg:col-span-8 space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">
-                Quizzes
-              </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Showing {Math.min(quizzes.length, 5)} of {quizzes.length} quizzes
-              </p>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* LEFT: Quizzes List (Paginated) */}
+          <div className="lg:col-span-7 space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Assigned Quizzes & Activities
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {quizzes.length} total activity items
+                </p>
+              </div>
 
               <Link
                 to={`/teacher/subject/${subjectId}/activities`}
-                className="text-xs font-bold text-indigo-600 hover:underline"
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
               >
-                View Activities
+                Manage All →
               </Link>
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm divide-y divide-slate-100">
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
               {quizzesLoading ? (
-                <div className="p-6 text-slate-500">
+                <div className="p-6 text-xs text-slate-500">
                   Loading quizzes...
                 </div>
               ) : quizzesError ? (
-                <div className="p-6 text-rose-600">
+                <div className="p-6 text-xs text-rose-600">
                   Failed to load quizzes.
                 </div>
               ) : quizzes.length === 0 ? (
-                <div className="p-6 text-slate-600">
-                  No quizzes yet for this subject offering.
+                <div className="p-8 text-center text-xs text-slate-500">
+                  No quizzes created yet for this subject offering.
                 </div>
               ) : (
-                quizzes.map((quiz) => {
-                  const due = quiz.close_time
-                    ? formatDateShort(
-                        quiz.close_time
-                      )
-                    : formatDateShort(
-                        quiz.open_time
+                <>
+                  <div className="divide-y divide-slate-100">
+                    {paginatedQuizzes.map((quiz) => {
+                      const due = quiz.close_time
+                        ? formatDateShort(quiz.close_time)
+                        : formatDateShort(quiz.open_time);
+
+                      return (
+                        <Link
+                          key={quiz.id}
+                          to={`/teacher/activities/${quiz.id}`}
+                          className="block hover:bg-slate-50/80 transition-colors"
+                        >
+                          <div className="flex items-center justify-between p-4 gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="h-9 w-9 flex items-center justify-center rounded-lg bg-slate-100 text-slate-600 shrink-0">
+                                <FileText size={17} />
+                              </div>
+
+                              <div className="min-w-0">
+                                <h4 className="font-semibold text-slate-900 text-xs truncate">
+                                  {quiz.title}
+                                </h4>
+                                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                                  {quiz.open_time ? `Opens: ${formatDateShort(quiz.open_time)}` : "No open date"}{" "}
+                                  • {quiz.close_time ? `Closes: ${formatDateShort(quiz.close_time)}` : "No deadline"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="text-right hidden sm:block">
+                                <p className="text-[10px] text-slate-400 uppercase font-semibold">
+                                  Due
+                                </p>
+                                <p className="text-xs font-semibold text-slate-700">
+                                  {due}
+                                </p>
+                              </div>
+                              <StatusPill status={quiz.status} />
+                            </div>
+                          </div>
+                        </Link>
                       );
+                    })}
+                  </div>
 
-                  return (
-                    <Link
-                      key={quiz.id}
-                      to={`/teacher/activities/${quiz.id}`}
-                      className="block"
-                    >
-                      <div className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors group">
-                        <div className="flex items-center gap-5">
-                          <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-all">
-                            <FileText size={20} />
-                          </div>
-
-                          <div>
-                            <h4 className="font-bold text-slate-800 text-base">
-                              {quiz.title}
-                            </h4>
-
-                            <p className="text-xs font-medium text-slate-400">
-                              {quiz.open_time
-                                ? `Starts ${formatDateShort(
-                                    quiz.open_time
-                                  )}`
-                                : "No schedule"}{" "}
-                              •{" "}
-                              {quiz.close_time
-                                ? `Ends ${formatDateShort(
-                                    quiz.close_time
-                                  )}`
-                                : "No end date"}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-6">
-                          <div className="text-right hidden sm:block">
-                            <p className="text-[10px] font-bold text-slate-300 uppercase">
-                              Due
-                            </p>
-
-                            <p className="text-xs font-bold text-slate-600">
-                              {due}
-                            </p>
-                          </div>
-
-                          <StatusPill
-                            status={quiz.status}
-                          />
-                        </div>
+                  {/* Quizzes Pagination Controls */}
+                  {totalQuizPages > 1 && (
+                    <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs text-slate-600">
+                      <span>
+                        Page <strong className="text-slate-800">{quizPage}</strong> of {totalQuizPages}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setQuizPage((p) => Math.max(1, p - 1))}
+                          disabled={quizPage === 1}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 bg-white text-xs font-medium hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                        >
+                          <ChevronLeft size={13} />
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setQuizPage((p) => Math.min(totalQuizPages, p + 1))}
+                          disabled={quizPage === totalQuizPages}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 bg-white text-xs font-medium hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                        >
+                          Next
+                          <ChevronRight size={13} />
+                        </button>
                       </div>
-                    </Link>
-                  );
-                })
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
 
-          {/* RIGHT: Recent Grades */}
-          
-          <div className="lg:col-span-4">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-
-              {/* Header */}
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900">
-                    Recent Quiz Grades
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Latest student submissions
-                  </p>
-                </div>
-
-                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">
-                  {Math.min(recent.length, 5)} submissions
-                </span>
+          {/* RIGHT: Recent Quiz Grades (Professional Dashboard Table with Pagination) */}
+          <div className="lg:col-span-5 space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Recent Submissions
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {recent.length} recorded submissions
+                </p>
               </div>
 
-              {/* Content */}
-              <div className="min-h-[180px]">
+              <Link
+                to={`/teacher/subject/${subjectId}/analytics`}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                Analytics →
+              </Link>
+            </div>
 
-                {recentLoading ? (
-                  <div className="p-8 flex flex-col items-center justify-center text-center">
-                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
-                    <p className="text-sm text-slate-500">
-                      Loading recent grades...
-                    </p>
-                  </div>
-                ) : recentError ? (
-                  <div className="p-8 text-center">
-                    <p className="text-sm font-medium text-rose-600">
-                      Failed to load recent quiz grades.
-                    </p>
-                  </div>
-                ) : recent.length === 0 ? (
-                  <div className="p-8 flex flex-col items-center justify-center text-center">
-                    <div className="w-11 h-11 rounded-xl bg-slate-50 flex items-center justify-center mb-3">
-                      <FileText className="w-5 h-5 text-slate-400" />
-                    </div>
-                    <p className="text-sm font-semibold text-slate-700">
-                      No quiz submissions yet
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Student quiz results will appear here.
-                    </p>
-                  </div>
-                ) : (
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+              {recentLoading ? (
+                <div className="p-8 text-center text-xs text-slate-500">
+                  <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                  Loading submissions...
+                </div>
+              ) : recentError ? (
+                <div className="p-6 text-center text-xs text-rose-600">
+                  Failed to load recent submissions.
+                </div>
+              ) : recent.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  No student quiz submissions recorded yet.
+                </div>
+              ) : (
+                <>
                   <div className="divide-y divide-slate-100">
-                    {recent.slice(0, 5).map((grade, idx) => (
-                      <div
-                        key={idx}
-                        className="px-5 py-4 hover:bg-slate-50/70 transition-colors"
-                      >
-                        <div className="flex items-center justify-between gap-4">
+                    {paginatedRecent.map((grade, idx) => {
+                      const pctNum = Number(grade.percent || 0);
+                      const isPassing = pctNum >= 75;
 
-                          {/* Student Information */}
+                      return (
+                        <div
+                          key={idx}
+                          className="px-4 py-3 hover:bg-slate-50/70 transition-colors flex items-center justify-between gap-3 text-xs"
+                        >
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold text-slate-900 truncate">
+                            <p className="font-semibold text-slate-900 truncate">
                               {grade.student}
                             </p>
-
-                            <p className="text-xs text-slate-500 mt-1 truncate">
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5">
                               {grade.quiz}
                             </p>
+                            {grade.submitted_at && (
+                              <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                                <Clock size={10} />
+                                {new Date(grade.submitted_at).toLocaleDateString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                            )}
                           </div>
 
-                          {/* Grade Information */}
                           <div className="shrink-0 text-right">
-                            <p className="text-sm font-extrabold text-slate-900 tabular-nums">
-                              {grade.score}/{grade.total}
-                            </p>
-
-                            <span className="inline-flex mt-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[11px] font-bold tabular-nums">
-                              {Number(grade.percent).toFixed(1)}%
+                            <span className="font-mono font-bold text-slate-900 text-xs block">
+                              {grade.score} / {grade.total}
+                            </span>
+                            <span
+                              className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                isPassing
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-rose-50 text-rose-700 border border-rose-200"
+                              }`}
+                            >
+                              {pctNum.toFixed(1)}%
                             </span>
                           </div>
                         </div>
-
-                        {/* Submission Date */}
-                        {grade.submitted_at && (
-                          <div className="flex items-center gap-1.5 mt-3">
-                            <Clock className="w-3 h-3 text-slate-400" />
-                            <p className="text-[11px] text-slate-400">
-                              Submitted:{" "}
-                              {new Date(grade.submitted_at).toLocaleString()}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                )}
-              </div>
 
-              {/* Footer */}
-              <div className="p-4 border-t border-slate-100 bg-slate-50/40">
-                <Link
-                  to={`/teacher/subject/${subjectId}/analytics`}
-                  className="w-full py-3 px-4 bg-slate-900 text-white text-[11px] font-extrabold uppercase tracking-[0.15em] rounded-xl hover:bg-indigo-600 transition-all duration-200 flex items-center justify-center gap-2"
-                >
-                  Detailed Analytics
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
-
+                  {/* Recent Grades Pagination Controls */}
+                  {totalRecentPages > 1 && (
+                    <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs text-slate-600">
+                      <span>
+                        Page <strong className="text-slate-800">{recentPage}</strong> of {totalRecentPages}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setRecentPage((p) => Math.max(1, p - 1))}
+                          disabled={recentPage === 1}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 bg-white text-xs font-medium hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                        >
+                          <ChevronLeft size={13} />
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRecentPage((p) => Math.min(totalRecentPages, p + 1))}
+                          disabled={recentPage === totalRecentPages}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 bg-white text-xs font-medium hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                        >
+                          Next
+                          <ChevronRight size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
-          
         </div>
       </main>
     </section>

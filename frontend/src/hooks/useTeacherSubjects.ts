@@ -44,7 +44,7 @@ export function useTeacherSubjectQuizzes(subjectId: number) {
     queryKey: ["teacher", "subjects", subjectId, "quizzes"],
     queryFn: () => getTeacherSubjectQuizzes(subjectId),
     enabled: subjectId > 0,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5 * 1000,
   });
 }
 
@@ -77,7 +77,7 @@ export function useTeacherSubjectQuizAttempts(quizzes: TeacherQuiz[]) {
       return map;
     },
     enabled: quizzes.length > 0,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 5 * 1000,
   });
 }
 
@@ -552,7 +552,7 @@ export function useCreateTeacherQuiz() {
   return useMutation({
     mutationFn: createTeacherQuiz,
 
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: [
           "teacher",
@@ -566,6 +566,25 @@ export function useCreateTeacherQuiz() {
           "subjects",
         ],
       });
+
+      if (variables?.SubjectOffering) {
+        queryClient.invalidateQueries({
+          queryKey: [
+            "teacher",
+            "subjects",
+            variables.SubjectOffering,
+            "quizzes",
+          ],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [
+            "teacher",
+            "subjects",
+            variables.SubjectOffering,
+            "activities",
+          ],
+        });
+      }
     },
   });
 }
@@ -593,8 +612,7 @@ export function useSemesterGrades(
 
     enabled: subjectId > 0,
 
-    staleTime:
-      2 * 60 * 1000,
+    staleTime: 5 * 1000,
   });
 }
 
@@ -627,6 +645,13 @@ export function useSaveSemesterGrade() {
           variables.SubjectOffering,
         ],
       });
+
+      queryClient.invalidateQueries({
+        queryKey: [
+          "teacher",
+          "subjects",
+        ],
+      });
     },
   });
 }
@@ -639,6 +664,9 @@ export function useBatchRecordQuizScores() {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["teacher", "subjects"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["teacher", "quizzes"],
       });
       queryClient.invalidateQueries({
         queryKey: ["teacher", "quiz-attempts"],
