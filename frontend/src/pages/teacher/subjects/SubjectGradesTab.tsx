@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Search, CheckCircle2, AlertTriangle, ArrowRight, BookOpen } from "lucide-react";
 
 import {
   useTeacherSubjectGrades,
@@ -35,7 +35,8 @@ export default function SubjectGradesTab() {
   const subjectId = Number(id || 0);
 
   const [selectedSemester, setSelectedSemester] =
-    useState<Semester | "ALL">("ALL");
+    useState<Semester | "ALL">("SEMESTER_1");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const {
     data: grades = [],
@@ -46,16 +47,44 @@ export default function SubjectGradesTab() {
     isFetching,
   } = useTeacherSubjectGrades(subjectId);
 
-  const filteredGrades = useMemo(() => {
+  const termGrades = useMemo(() => {
     if (selectedSemester === "ALL") {
       return grades;
     }
 
     return grades.filter(
-      (grade) =>
-        grade.semester === selectedSemester
+      (grade) => grade.semester === selectedSemester
     );
   }, [grades, selectedSemester]);
+
+  const filteredGrades = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return termGrades;
+    return termGrades.filter((g) =>
+      (g.student_name || "").toLowerCase().includes(q)
+    );
+  }, [termGrades, searchQuery]);
+
+  const termStats = useMemo(() => {
+    const validGrades = termGrades.filter(
+      (g) => typeof g.final_grade === "number" && !Number.isNaN(g.final_grade)
+    );
+    const avg =
+      validGrades.length > 0
+        ? validGrades.reduce((sum, g) => sum + (g.final_grade || 0), 0) /
+          validGrades.length
+        : null;
+    const passing = validGrades.filter((g) => (g.final_grade || 0) >= 75).length;
+    const atRisk = validGrades.filter((g) => (g.final_grade || 0) < 75).length;
+
+    return {
+      total: termGrades.length,
+      graded: validGrades.length,
+      average: avg !== null ? avg.toFixed(1) : "—",
+      passing,
+      atRisk,
+    };
+  }, [termGrades]);
 
   const pageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -150,153 +179,232 @@ export default function SubjectGradesTab() {
           .subject-grades-tab .grades-scroll { flex: 1; min-height: 0; }
         }
       `}</style>
-      {/* Header */}
-      <div className="grades-toolbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Header & Term Classifier */}
+      <div className="grades-toolbar flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">
-            Grades
+          <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            Quarterly / Term Grades
           </h2>
-
-          <p className="mt-1 text-xs text-slate-500">
-            View student grades by semester.
+          <p className="mt-0.5 text-xs text-slate-500">
+            {selectedSemester === "ALL"
+              ? "Showing consolidated records across all terms"
+              : `Showing ${semesterLabel(selectedSemester as Semester)} classlist and grades`}
           </p>
         </div>
 
-        {/* Semester Filter */}
-        <select
-          aria-label="Filter grades by semester"
-          value={selectedSemester}
-          onChange={(e) =>
-            setSelectedSemester(
-              e.target.value as
-                | Semester
-                | "ALL"
-            )
-          }
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="ALL">
-            All Semesters
-          </option>
+        {/* Term Classifier Pill Bar & Gradebook Link */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+            <button
+              type="button"
+              onClick={() => setSelectedSemester("SEMESTER_1")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedSemester === "SEMESTER_1"
+                  ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              1st Term
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedSemester("SEMESTER_2")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedSemester === "SEMESTER_2"
+                  ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              2nd Term
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedSemester("SEMESTER_3")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedSemester === "SEMESTER_3"
+                  ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              3rd Term
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedSemester("ALL")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedSemester === "ALL"
+                  ? "bg-white text-indigo-700 shadow-xs border border-slate-200/60"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              All Terms
+            </button>
+          </div>
 
-          <option value="SEMESTER_1">
-            1st Semester
-          </option>
-
-          <option value="SEMESTER_2">
-            2nd Semester
-          </option>
-
-          <option value="SEMESTER_3">
-            3rd Semester
-          </option>
-        </select>
+          <Link
+            to={`/teacher/grades/semester/${subjectId}`}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-indigo-600 transition shadow-2xs"
+          >
+            <BookOpen size={13} />
+            <span>Open Gradebook Sheet</span>
+            <ArrowRight size={13} />
+          </Link>
+        </div>
       </div>
 
-      {/* AI Grade Forecasting Early Warning Banner */}
-      <div className="rounded-xl border border-indigo-200/90 bg-indigo-50/60 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-indigo-600 p-2 text-white shrink-0 shadow-2xs">
-            <Sparkles size={18} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                AI Grade Forecasting & Early Warning Active
-              </h3>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                DepEd Trajectory Model
-              </span>
-            </div>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Identify students projected to be at academic risk (&lt; 75%) before quarterly marks are finalized.
-            </p>
-          </div>
+      {/* Term Summary Cards & Search */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Students Enrolled
+          </p>
+          <p className="text-xl font-black text-slate-900 mt-0.5">{termStats.total}</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{termStats.graded} with recorded grades</p>
         </div>
 
-        <Link
-          to={`/teacher/subject/${subjectId}/analytics`}
-          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition shadow-2xs shrink-0"
-        >
-          <span>View Forecasts & At-Risk Roster</span>
-          <span>→</span>
-        </Link>
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3 shadow-2xs">
+          <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+            Term Average
+          </p>
+          <p className="text-xl font-black text-indigo-950 mt-0.5 font-mono">{termStats.average}%</p>
+          <p className="text-[10px] text-indigo-600 mt-0.5">Mean transmuted score</p>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 shadow-2xs">
+          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
+            Passing (≥ 75%)
+          </p>
+          <p className="text-xl font-black text-emerald-700 mt-0.5">{termStats.passing}</p>
+          <p className="text-[10px] text-emerald-600 mt-0.5">Satisfactory academic progress</p>
+        </div>
+
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-3 shadow-2xs">
+          <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">
+            At-Risk (&lt; 75%)
+          </p>
+          <p className="text-xl font-black text-rose-700 mt-0.5">{termStats.atRisk}</p>
+          <p className="text-[10px] text-rose-600 mt-0.5">Requires remediation</p>
+        </div>
+      </div>
+
+      {/* Search Input Filter */}
+      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3.5 py-2 shadow-2xs">
+        <Search size={15} className="text-slate-400 shrink-0" />
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={`Search students in ${selectedSemester === "ALL" ? "all terms" : semesterLabel(selectedSemester as Semester)}...`}
+          className="w-full bg-transparent outline-none text-xs text-slate-700 font-medium"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="text-xs text-slate-400 hover:text-slate-600 font-bold"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Grades Table */}
-      <div className="grades-panel bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="grades-panel bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
         {filteredGrades.length === 0 ? (
-          <div className="p-8 text-center text-slate-600">
-            No semester grades yet.
+          <div className="p-8 text-center text-xs text-slate-500">
+            {searchQuery
+              ? `No student matching "${searchQuery}" found in this term.`
+              : `No recorded grades for ${selectedSemester === "ALL" ? "any term" : semesterLabel(selectedSemester as Semester)} yet. Open the Gradebook Sheet to record scores.`}
           </div>
         ) : (
           <div className="grades-scroll" tabIndex={0} role="region" aria-label="Student grades">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50/90 border-b border-slate-200">
                 <tr className="text-left text-slate-500">
-                  <th scope="col" className="px-5 py-3">
-                    Student
+                  <th scope="col" className="px-4 py-3 font-bold text-slate-700">
+                    Student Name
                   </th>
 
-                  <th scope="col" className="px-5 py-3">
-                    Semester
+                  {selectedSemester === "ALL" && (
+                    <th scope="col" className="px-4 py-3 font-bold text-slate-700">
+                      Term
+                    </th>
+                  )}
+
+                  <th scope="col" className="px-4 py-3 font-bold text-slate-700">
+                    Written Work Total
                   </th>
 
-                  <th scope="col" className="px-5 py-3">
-                    Written Work
+                  <th scope="col" className="px-4 py-3 font-bold text-slate-700">
+                    Transmuted Grade
                   </th>
 
-                  <th scope="col" className="px-5 py-3">
-                    Final Grade
-                  </th>
-
-                  <th scope="col" className="px-5 py-3">
-                    Remarks
+                  <th scope="col" className="px-4 py-3 font-bold text-slate-700">
+                    Status / Remarks
                   </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {filteredGrades.map(
-                  (grade) => (
-                    <tr
-                      key={grade.id}
-                      className="hover:bg-slate-50"
-                    >
-                      <td className="px-5 py-4 font-semibold text-slate-800">
-                        {
-                          grade.student_name
-                        }
+                {filteredGrades.map((grade) => {
+                  const numGrade = Number(grade.final_grade);
+                  const isRecorded = grade.final_grade !== null && !Number.isNaN(numGrade);
+                  const isPassing = isRecorded && numGrade >= 75;
+
+                  return (
+                    <tr key={grade.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-4 py-3 font-semibold text-slate-900">
+                        {grade.student_name}
                       </td>
 
-                      <td className="px-5 py-4">
-                        {semesterLabel(
-                          grade.semester
+                      {selectedSemester === "ALL" && (
+                        <td className="px-4 py-3 text-slate-600">
+                          {semesterLabel(grade.semester)}
+                        </td>
+                      )}
+
+                      <td className="px-4 py-3 text-slate-600 font-mono">
+                        {grade.written_work_score !== null && grade.written_work_score !== undefined
+                          ? `${grade.written_work_score} / ${grade.written_work_total || 100}`
+                          : "—"}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {isRecorded ? (
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                              isPassing
+                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                : "bg-rose-50 text-rose-800 border border-rose-200"
+                            }`}
+                          >
+                            {numGrade.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 font-mono italic">—</span>
                         )}
                       </td>
 
-                      <td className="px-5 py-4">
-                        {
-                          grade.written_work_score
-                        }
-                        /
-                        {
-                          grade.written_work_total
-                        }
-                      </td>
-
-                      <td className="px-5 py-4 font-black text-slate-900">
-                        {grade.final_grade ??
-                          "—"}
-                      </td>
-
-                      <td className="px-5 py-4">
-                        {grade.remarks ??
-                          "—"}
+                      <td className="px-4 py-3">
+                        {isRecorded ? (
+                          <span
+                            className={`inline-flex items-center gap-1 font-semibold text-xs ${
+                              isPassing ? "text-emerald-700" : "text-rose-700"
+                            }`}
+                          >
+                            {isPassing ? (
+                              <CheckCircle2 size={12} className="text-emerald-600" />
+                            ) : (
+                              <AlertTriangle size={12} className="text-rose-600" />
+                            )}
+                            {grade.remarks || (isPassing ? "Passed" : "Needs Intervention")}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs italic">Unrecorded</span>
+                        )}
                       </td>
                     </tr>
-                  )
-                )}
+                  );
+                })}
               </tbody>
             </table>
           </div>

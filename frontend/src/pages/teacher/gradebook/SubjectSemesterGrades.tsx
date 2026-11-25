@@ -78,6 +78,7 @@ export default function SubjectSemesterGrades() {
   const [addActivityCategory, setAddActivityCategory] = useState<ActivityCategory>("WRITTEN_WORK");
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [savingStudentId, setSavingStudentId] = useState<number | null>(null);
 
   // Local draft edits per student id
   const [draftGrades, setDraftGrades] = useState<Record<number, StudentDraft>>(
@@ -99,15 +100,20 @@ export default function SubjectSemesterGrades() {
     isFetching: gradesFetching,
   } = useSemesterGrades(subjectId, currentSemester);
 
-  const { data: quizzes = [], isFetching: quizzesFetching } =
-    useTeacherSubjectQuizzes(subjectId);
+  const {
+    data: quizzes = [],
+    isFetching: quizzesFetching,
+    refetch: refetchQuizzes,
+  } = useTeacherSubjectQuizzes(subjectId);
 
   const { data: enrolledStudents = [] } =
     useTeacherSubjectStudents(subjectId);
 
   // Fetch real student attempt scores for all quizzes in this subject
-  const { data: attemptScores = {} } =
-    useTeacherSubjectQuizAttempts(quizzes);
+  const {
+    data: attemptScores = {},
+    refetch: refetchAttempts,
+  } = useTeacherSubjectQuizAttempts(quizzes);
 
   /*
    * Mutations
@@ -458,6 +464,7 @@ export default function SubjectSemesterGrades() {
    * Save one student row to backend
    */
   const handleSaveRow = async (row: StudentRowData) => {
+    setSavingStudentId(row.student_id);
     const payload = {
       gradeId: row.grade_record_id,
       student: row.student_id,
@@ -492,10 +499,19 @@ export default function SubjectSemesterGrades() {
         await batchRecordMutation.mutateAsync({ updates: activityUpdates });
       }
       await saveMutation.mutateAsync(payload);
+      // Immediately refetch queries so UI updates instantly without delay
+      await Promise.all([
+        refetchGrades(),
+        refetchAttempts(),
+      ]);
       setDraftGrades((prev) => {
         const next = { ...prev };
         delete next[row.student_id];
         return next;
+      });
+      toast({
+        title: "Grade Saved",
+        description: `Scores for ${row.student_name} have been updated.`,
       });
     } catch (err) {
       console.error("Failed to save grade:", err);
@@ -504,6 +520,8 @@ export default function SubjectSemesterGrades() {
           ? err.message
           : "Failed to save semester grade."
       );
+    } finally {
+      setSavingStudentId(null);
     }
   };
 
@@ -558,7 +576,14 @@ export default function SubjectSemesterGrades() {
 
       setDraftGrades({});
       setIsEditing(false);
-      refetchGrades();
+      await Promise.all([
+        refetchGrades(),
+        refetchAttempts(),
+      ]);
+      toast({
+        title: "All Grades Saved",
+        description: "All modified grades have been recorded successfully.",
+      });
     } catch (err) {
       console.error("Failed to save all grades:", err);
       alert(
@@ -608,6 +633,12 @@ export default function SubjectSemesterGrades() {
       show_correct_answers: false,
       shuffle_questions: false,
       allow_multiple_attempts: false,
+    });
+    // Immediately refetch quizzes so the new column shows instantly without waiting or refreshing
+    await refetchQuizzes();
+    toast({
+      title: "Activity Added",
+      description: `"${data.title}" was created and added to your gradebook columns.`,
     });
   };
 
@@ -764,10 +795,7 @@ export default function SubjectSemesterGrades() {
           }
           isEditing={isEditing}
           isSavingAll={isSavingAll}
-          isSavingRow={(sId) =>
-            (saveMutation.isPending && saveMutation.variables?.student === sId) ||
-            batchRecordMutation.isPending
-          }
+          isSavingRow={(sId) => savingStudentId === sId}
           isDeletingRow={(gId) =>
             deleteMutation.isPending &&
             deleteMutation.variables?.gradeId === gId
